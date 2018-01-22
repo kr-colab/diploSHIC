@@ -1,0 +1,674 @@
+import allel
+import sys
+import math
+from allel.model.ndarray import SortedIndex
+from allel.util import asarray_ndim
+from scipy.spatial.distance import squareform
+import shicstats
+import numpy as np
+import random
+import gzip
+import scipy.stats
+
+def misPolarizeAlleleCounts(ac, pMisPol):
+    pMisPolInv = 1-pMisPol
+    mapping = []
+    for i in range(len(ac)):
+        if random.random() >= pMisPolInv:
+            mapping.append([1, 0]) #swap
+        else:
+            mapping.append([0, 1]) #no swap
+    return ac.map_alleles(mapping)
+
+#contains some bits modified from scikit-allel by Alistair Miles
+def readStatsDafsComputeStandardizationBins(statAndDafFileName, nBins=50, pMisPol=0.0):
+    stats = {}
+    dafs = []
+    pMisPolInv = 1-pMisPol
+    misPolarizedSnps, totalSnps = 0, 0
+    with open(statAndDafFileName) as statAndDafFile:
+        first = True
+        for line in statAndDafFile:
+            line = line.strip().split()
+            if first:
+                first = False
+                header = line
+                assert header[0] == "daf"
+                for i in range(1, len(header)):
+                    stats[header[i]] = []
+            else:
+                totalSnps += 1
+                if random.random() >= pMisPolInv:
+                    dafs.append(1-float(line[0]))
+                    misPolarizedSnps += 1
+                else:
+                    dafs.append(float(line[0]))
+                for i in range(1, len(line)):
+                    stats[header[i]].append(float(line[i]))
+
+    statInfo = {}
+    for statName in stats.keys():
+        stats[statName] = np.array(stats[statName])
+        nonan = ~np.isnan(stats[statName])
+        score_nonan = stats[statName][nonan]
+        daf_nonan = np.array(dafs)[nonan]
+        bins = allel.stats.selection.make_similar_sized_bins(daf_nonan, nBins)
+        mean_score, _, _ = scipy.stats.binned_statistic(daf_nonan, score_nonan,
+                                        statistic=np.mean,
+                                        bins=bins)
+        std_score, _, _ = scipy.stats.binned_statistic(daf_nonan, score_nonan,
+                                       statistic=np.std,
+                                       bins=bins)
+        statInfo[statName] = (mean_score, std_score, bins)
+    sys.stderr.write("mispolarized %d of %d (%f%%) SNPs when standardizing scores in %s\n" %(misPolarizedSnps, totalSnps, 100*misPolarizedSnps/float(totalSnps), statAndDafFileName))
+    return statInfo
+
+#includes a snippet copied from scikit-allel
+def standardize_by_allele_count_from_precomp_bins(score, dafs, standardizationInfo):
+    score_standardized = np.empty_like(score)
+    mean_score, std_score, bins = standardizationInfo
+    dafs = np.array(dafs)
+    for i in range(len(bins) - 1):
+        x1 = bins[i]
+        x2 = bins[i + 1]
+        if i == 0:
+            # first bin
+            loc = (dafs < x2)
+        elif i == len(bins) - 2:
+            # last bin
+            loc = (dafs >= x1)
+        else:
+            # middle bins
+            loc = (dafs >= x1) & (dafs < x2)
+        m = mean_score[i]
+        s = std_score[i]
+        score_standardized[loc] = (score[loc] - m) / s
+    return score_standardized
+
+def readFaArm(armFileName):
+    with open(armFileName) as armFile:
+        reading = False
+        seq = ""
+        for line in armFile:
+            if line.startswith(">"):
+                assert not reading
+                reading = True
+            else:
+                seq += line.strip()
+    return seq
+
+def polarizeSnps(unmasked, positions, refAlleles, altAlleles, ancArm):
+    assert len(unmasked) == len(ancArm)
+    assert len(positions) == len(refAlleles)
+    assert len(positions) == len(altAlleles)
+    isSnp = {}
+    for i in range(len(positions)):
+        isSnp[positions[i]] = i
+
+    mapping = []
+    for i in range(len(ancArm)):
+        if ancArm[i] in 'ACGT':
+            if isSnp.has_key(i+1):
+                ref, alt = refAlleles[isSnp[i+1]], altAlleles[isSnp[i+1]]
+                if ancArm[i] == ref:
+                    mapping.append([0, 1]) #no swap
+                elif ancArm[i] == alt:
+                    mapping.append([1, 0]) #swap
+                else:
+                    mapping.append([0, 1]) #no swap -- failed to polarize
+                    unmasked[i] = False
+        elif ancArm[i] == "N":
+            unmasked[i] = False
+            if isSnp.has_key(i+1):
+                mapping.append([0, 1]) #no swap -- failed to polarize
+        else:
+            sys.exit("Found a character in ancestral chromosome that is not 'A', 'C', 'G', 'T' or 'N' (all upper case)! AAARRRGGGHHHHHHHHH!!!\n")
+    assert len(mapping) == len(positions)
+    return mapping, unmasked
+
+def getAccessibilityInWins(isAccessibleSub, winLen, subWinLen, cutoff):
+    wins = []
+    badWinCount = 0
+    lastWinEnd = len(isAccessibleSub) - len(isAccessibleSub) % winLen
+    for i in range(0, lastWinEnd, winLen):
+        currWin = isAccessibleSub[i:i+winLen]
+        goodWin = True
+        for subWinStart in range(0, winLen, subWinLen):
+            unmaskedFrac = currWin[subWinStart:subWinStart+subWinLen].count(True)/float(subWinLen)
+            if unmaskedFrac < cutoff:
+                goodWin = False
+        if goodWin:
+            wins.append(currWin)
+        else:
+            badWinCount += 1
+    return wins
+
+def windowVals(vals, subWinBounds, positionArray, keepNans=False, absVal=False):
+    assert len(vals) == len(positionArray)
+
+    subWinIndex = 0
+    winStart, winEnd = subWinBounds[subWinIndex]
+    #windowedVals = [[]]
+    windowedVals = [[] for x in range(len(subWinBounds))]
+    for i in range(len(positionArray)):
+        currPos = positionArray[i]
+        while currPos > winEnd:
+            subWinIndex += 1
+            winStart, winEnd = subWinBounds[subWinIndex]
+            #windowedVals.append([])
+        assert currPos >= winStart and currPos <= winEnd
+        if keepNans == True or not math.isnan(vals[i]):
+            #windowedVals[-1].append(vals[i])
+            windowedVals[subWinIndex].append(vals[i])
+    assert len(windowedVals) == len(subWinBounds)
+    if absVal:
+        return [np.absolute(win) for win in windowedVals]
+    else:
+        return [np.array(win) for win in windowedVals]
+
+def readFa(faFileName, upper=False):
+    seqData = {}
+    with open(faFileName) as faFile:
+        reading = False
+        for line in faFile:
+            if line.startswith(">"):
+                if reading:
+                    if upper:
+                        seqData[currChr] = seq.upper()
+                    else:
+                        seqData[currChr] = seq
+                else:
+                    reading = True
+                currChr = line[1:].strip()
+                seq = ""
+            else:
+                seq += line.strip()
+    if upper:
+        seqData[currChr] = seq.upper()
+    else:
+        seqData[currChr] = seq
+    return seqData
+
+def readMaskAndAncDataForTraining(maskFileName, ancFileName, totalPhysLen, subWinLen, chrArmsForMasking, shuffle=True, cutoff=0.25):
+    isAccessible = []
+    maskData, ancData = readFa(maskFileName, upper=True), readFa(ancFileName, upper=True)
+    for currChr in chrArmsForMasking:
+        assert len(maskData[currChr]) == len(ancData[currChr])
+        isAccessibleSub = []
+        for i in range(len(maskData[currChr])):
+            if "N" in [ancData[currChr][i], maskData[currChr][i]]:
+                isAccessibleSub.append(False)
+            else:
+                isAccessibleSub.append(True)
+        windowedAccessibility = getAccessibilityInWins(isAccessibleSub, totalPhysLen, subWinLen, cutoff)
+        if windowedAccessibility:
+            isAccessible += windowedAccessibility
+    if shuffle:
+        random.shuffle(isAccessible)
+    count = 0
+    for i in range(len(isAccessible)):
+        assert len(isAccessible[i]) == totalPhysLen
+        count += 1
+    assert count
+    return isAccessible
+
+def readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMasking, shuffle=True, cutoff=0.25):
+    isAccessible = []
+    isAccessibleSub = []
+    if maskFileName.endswith(".gz"):
+        readFunc = gzip.open
+    else:
+        readFunc = open
+    with readFunc(maskFileName) as maskFile:
+        for line in maskFile:
+            if line.startswith(">"):
+                currChr = line[1:].strip()
+                if isAccessibleSub:
+                    windowedAccessibility = getAccessibilityInWins(isAccessibleSub, totalPhysLen, subWinLen, cutoff)
+                    if windowedAccessibility:
+                        isAccessible += windowedAccessibility
+                if currChr in chrArmsForMasking:
+                    readingMasks = True
+                else:
+                    readingMasks = False
+                isAccessibleSub = []
+            else:
+                if readingMasks:
+                    for char in line.strip().upper():
+                        if char == 'N':
+                            isAccessibleSub.append(False)
+                        else:
+                            isAccessibleSub.append(True)
+    if isAccessibleSub:
+        windowedAccessibility = getAccessibilityInWins(isAccessibleSub, totalPhysLen, subWinLen, cutoff)
+        if windowedAccessibility:
+            isAccessible += windowedAccessibility
+    if shuffle:
+        random.shuffle(isAccessible)
+    count = 0
+    for i in range(len(isAccessible)):
+        assert len(isAccessible[i]) == totalPhysLen
+        count += 1
+    assert count
+    #med = np.median([isAccessible[x].count(True) for x in range(len(isAccessible))])
+    return isAccessible
+
+def readMaskDataForScan(maskFileName, chrArm):
+    isAccessible = []
+    readingMasks = False
+    with open(maskFileName) as maskFile:
+        for line in maskFile:
+            if line.startswith(">"):
+                currChr = line[1:].strip()
+                if currChr == chrArm:
+                    readingMasks = True
+                elif readingMasks:
+                    break
+            else:
+                if readingMasks:
+                    for char in line.strip().upper():
+                        if char == 'N':
+                            isAccessible.append(False)
+                        else:
+                            isAccessible.append(True)
+    return isAccessible
+
+def normalizeFeatureVec(statVec):
+    minVal = min(statVec)
+    if minVal < 0:
+        statVec = [x-minVal for x in statVec]
+    normStatVec = []
+    statSum = float(sum(statVec))
+    if statSum == 0:
+        normStatVec = [1.0/len(statVec)]*len(statVec)
+    else:
+        for k in range(len(statVec)):
+            normStatVec.append(statVec[k]/statSum)
+    return normStatVec
+
+def calcAndAppendStatVal(alleleCounts, snpLocs, statName, subWinStart, subWinEnd, statVals, instanceIndex, subWinIndex, hapsInSubWin, unmasked, precomputedStats):
+    if statName == "tajD":
+        statVals[statName][instanceIndex].append(allel.stats.diversity.tajima_d(alleleCounts, pos=snpLocs, start=subWinStart, stop=subWinEnd))
+    elif statName == "pi":
+        statVals[statName][instanceIndex].append(allel.stats.diversity.sequence_diversity(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
+    elif statName == "thetaW":
+        statVals[statName][instanceIndex].append(allel.stats.diversity.watterson_theta(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
+    elif statName == "thetaH":
+        statVals[statName][instanceIndex].append(thetah(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
+    elif statName == "fayWuH":
+        statVals[statName][instanceIndex].append(statVals["thetaH"][instanceIndex][subWinIndex]-statVals["pi"][instanceIndex][subWinIndex])
+    elif statName == "HapCount":
+        statVals[statName][instanceIndex].append(len(hapsInSubWin.distinct()))
+    elif statName == "H1":
+        h1, h12, h123, h21 = allel.stats.selection.garud_h(hapsInSubWin)
+        statVals["H1"][instanceIndex].append(h1)
+        if "H12" in statVals:
+            statVals["H12"][instanceIndex].append(h12)
+        if "H123" in statVals:
+            statVals["H123"][instanceIndex].append(h123)
+        if "H2/H1" in statVals:
+            statVals["H2/H1"][instanceIndex].append(h21)
+    elif statName == "ZnS":
+        r2Matrix = shicstats.computeR2Matrix(hapsInSubWin)
+        statVals["ZnS"][instanceIndex].append(shicstats.ZnS(r2Matrix)[0])
+        statVals["Omega"][instanceIndex].append(shicstats.omega(r2Matrix)[0])
+    elif statName == "RH":
+        rMatrixFlat = allel.stats.ld.rogers_huff_r(hapsInSubWin.to_genotypes(ploidy=2).to_n_alt())
+        rhAvg = rMatrixFlat.mean()
+        statVals["RH"][instanceIndex].append(rhAvg)
+        r2Matrix = squareform(rMatrixFlat ** 2)
+        statVals["Omega"][instanceIndex].append(shicstats.omega(r2Matrix)[0])
+    elif statName == "iHSMean":
+        vals = [x for x in precomputedStats["iHS"][subWinIndex] if not (math.isnan(x) or math.isinf(x))]
+        if len(vals) == 0:
+            statVals["iHSMean"][instanceIndex].append(0.0)
+        else:
+            statVals["iHSMean"][instanceIndex].append(sum(vals)/float(len(vals)))
+    elif statName == "nSLMean":
+        vals = [x for x in precomputedStats["nSL"][subWinIndex] if not (math.isnan(x) or math.isinf(x))]
+        if len(vals) == 0:
+            statVals["nSLMean"][instanceIndex].append(0.0)
+        else:
+            statVals["nSLMean"][instanceIndex].append(sum(vals)/float(len(vals)))
+    elif statName == "iHSMax":
+        vals = [x for x in precomputedStats["iHS"][subWinIndex] if not (math.isnan(x) or math.isinf(x))]
+        if len(vals) == 0:
+            maxVal = 0.0
+        else:
+            maxVal = max(vals)
+        statVals["iHSMax"][instanceIndex].append(maxVal)
+    elif statName == "nSLMax":
+        vals = [x for x in precomputedStats["nSL"][subWinIndex] if not (math.isnan(x) or math.isinf(x))]
+        if len(vals) == 0:
+            maxVal = 0.0
+        else:
+            maxVal = max(vals)
+        statVals["nSLMax"][instanceIndex].append(maxVal)
+    elif statName == "iHSOutFrac":
+        statVals["iHSOutFrac"][instanceIndex].append(getOutlierFrac(precomputedStats["iHS"][subWinIndex]))
+    elif statName == "nSLOutFrac":
+        statVals["nSLOutFrac"][instanceIndex].append(getOutlierFrac(precomputedStats["nSL"][subWinIndex]))
+    elif statName == "distVar":
+        dists = shicstats.pairwiseDiffs(hapsInSubWin)/float(unmasked[subWinStart-1:subWinEnd].count(True))
+        statVals["distVar"][instanceIndex].append(np.var(dists, ddof=1))
+        statVals["distSkew"][instanceIndex].append(scipy.stats.skew(dists))
+        statVals["distKurt"][instanceIndex].append(scipy.stats.kurtosis(dists))
+    elif statName in ["H12", "H123", "H2/H1", "Omega", "distVar", "distSkew", "distKurt"]:
+        assert len(statVals[statName][instanceIndex]) == subWinIndex+1
+
+def calcAndAppendStatValDiplo(alleleCounts, snpLocs, statName, subWinStart, subWinEnd, statVals, instanceIndex, subWinIndex, hapsInSubWin,genosInSubWin, unmasked, precomputedStats):
+    genosNAlt = genosInSubWin.to_n_alt()
+    if statName == "tajD":
+        statVals[statName][instanceIndex].append(allel.stats.diversity.tajima_d(alleleCounts, pos=snpLocs, start=subWinStart, stop=subWinEnd))
+    elif statName == "pi":
+        statVals[statName][instanceIndex].append(allel.stats.diversity.sequence_diversity(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
+    elif statName == "thetaW":
+        statVals[statName][instanceIndex].append(allel.stats.diversity.watterson_theta(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
+    elif statName == "thetaH":
+        statVals[statName][instanceIndex].append(thetah(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
+    elif statName == "fayWuH":
+        statVals[statName][instanceIndex].append(statVals["thetaH"][instanceIndex][subWinIndex]-statVals["pi"][instanceIndex][subWinIndex])
+    elif statName == "HapCount":
+        statVals[statName][instanceIndex].append(len(hapsInSubWin.distinct()))
+    elif statName == "nDiplos":
+        statVals["nDiplos"][instanceIndex].append(np.unique(genosNAlt,axis=1).shape[1])
+    elif statName == "H1":
+        h1, h12, h123, h21 = allel.stats.selection.garud_h(hapsInSubWin)
+        statVals["H1"][instanceIndex].append(h1)
+        if "H12" in statVals:
+            statVals["H12"][instanceIndex].append(h12)
+        if "H123" in statVals:
+            statVals["H123"][instanceIndex].append(h123)
+        if "H2/H1" in statVals:
+            statVals["H2/H1"][instanceIndex].append(h21)
+    elif statName == "diplo_H1":
+        dh1, dh12, dh123, dh21 = allel.stats.selection.garud_h(genosNAlt)
+        statVals["diplo_H1"][instanceIndex].append(dh1)
+        if "diplo_H12" in statVals:
+            statVals["diplo_H12"][instanceIndex].append(dh12)
+        if "diplo_H123" in statVals:
+            statVals["diplo_H123"][instanceIndex].append(dh123)
+        if "diplo_H2/H1" in statVals:
+            statVals["diplo_H2/H1"][instanceIndex].append(dh21)
+    elif statName == "ZnS":
+        r2Matrix = shicstats.computeR2Matrix(hapsInSubWin)
+        statVals["ZnS"][instanceIndex].append(shicstats.ZnS(r2Matrix)[0])
+        statVals["Omega"][instanceIndex].append(shicstats.omega(r2Matrix)[0])
+    elif statName == "diplo_ZnS":
+        if genosNAlt.shape[0] == 1:
+            statVals["diplo_ZnS"][instanceIndex].append(0.0)
+            statVals["diplo_Omega"][instanceIndex].append(0.0)
+        else:
+            r2Matrix = allel.rogers_huff_r(genosNAlt,fill=0.0)
+            statVals["diplo_ZnS"][instanceIndex].append(np.nanmean(r2Matrix))
+            r2Matrix2 = squareform(r2Matrix ** 2)
+            statVals["diplo_Omega"][instanceIndex].append(shicstats.omega(r2Matrix2)[0])
+    elif statName == "RH":
+        rMatrixFlat = allel.stats.ld.rogers_huff_r(hapsInSubWin.to_genotypes(ploidy=2).to_n_alt())
+        rhAvg = rMatrixFlat.mean()
+        statVals["RH"][instanceIndex].append(rhAvg)
+        r2Matrix = squareform(rMatrixFlat ** 2)
+        statVals["Omega"][instanceIndex].append(shicstats.omega(r2Matrix)[0])
+    elif statName == "iHSMean":
+        vals = [x for x in precomputedStats["iHS"][subWinIndex] if not (math.isnan(x) or math.isinf(x))]
+        if len(vals) == 0:
+            statVals["iHSMean"][instanceIndex].append(0.0)
+        else:
+            statVals["iHSMean"][instanceIndex].append(sum(vals)/float(len(vals)))
+    elif statName == "nSLMean":
+        vals = [x for x in precomputedStats["nSL"][subWinIndex] if not (math.isnan(x) or math.isinf(x))]
+        if len(vals) == 0:
+            statVals["nSLMean"][instanceIndex].append(0.0)
+        else:
+            statVals["nSLMean"][instanceIndex].append(sum(vals)/float(len(vals)))
+    elif statName == "iHSMax":
+        vals = [x for x in precomputedStats["iHS"][subWinIndex] if not (math.isnan(x) or math.isinf(x))]
+        if len(vals) == 0:
+            maxVal = 0.0
+        else:
+            maxVal = max(vals)
+        statVals["iHSMax"][instanceIndex].append(maxVal)
+    elif statName == "nSLMax":
+        vals = [x for x in precomputedStats["nSL"][subWinIndex] if not (math.isnan(x) or math.isinf(x))]
+        if len(vals) == 0:
+            maxVal = 0.0
+        else:
+            maxVal = max(vals)
+        statVals["nSLMax"][instanceIndex].append(maxVal)
+    elif statName == "iHSOutFrac":
+        statVals["iHSOutFrac"][instanceIndex].append(getOutlierFrac(precomputedStats["iHS"][subWinIndex]))
+    elif statName == "nSLOutFrac":
+        statVals["nSLOutFrac"][instanceIndex].append(getOutlierFrac(precomputedStats["nSL"][subWinIndex]))
+    elif statName == "distVar":
+        dists = shicstats.pairwiseDiffsDiplo(genosNAlt)/float(unmasked[subWinStart-1:subWinEnd].count(True))
+        statVals["distVar"][instanceIndex].append(np.var(dists, ddof=1))
+        statVals["distSkew"][instanceIndex].append(scipy.stats.skew(dists))
+        statVals["distKurt"][instanceIndex].append(scipy.stats.kurtosis(dists))
+    elif statName in ["H12", "H123", "H2/H1","diplo_H12", "diplo_H123", "diplo_H2/H1", "Omega", "distVar", "distSkew", "distKurt", "diplo_Omega"]:
+        if not len(statVals[statName][instanceIndex]) == subWinIndex+1:
+            print(statName,instanceIndex,subWinIndex+1)
+            print(statVals["diplo_H1"][instanceIndex], statVals["diplo_H12"][instanceIndex])
+            sys.exit()
+
+def getOutlierFrac(vals, cutoff=2.0):
+    if len(vals) == 0:
+        return 0.0
+    else:
+        num, denom = 0, 0
+        for val in vals:
+            assert val >= 0
+            if not math.isnan(val):
+                denom += 1
+                if val > cutoff:
+                    num += 1
+        if denom == 0:
+            return 0.0
+        else:
+            return num/float(denom)
+
+def appendStatValsForMonomorphic(statName, statVals, instanceIndex, subWinIndex):
+    if statName == "tajD":
+        statVals[statName][instanceIndex].append(0.0)
+    elif statName == "pi":
+        statVals[statName][instanceIndex].append(0.0)
+    elif statName == "thetaW":
+        statVals[statName][instanceIndex].append(0.0)
+    elif statName == "thetaH":
+        statVals[statName][instanceIndex].append(0.0)
+    elif statName == "fayWuH":
+        statVals[statName][instanceIndex].append(0.0)
+    elif statName == "nDiplos":
+        statVals[statName][instanceIndex].append(1)
+    elif statName in ["diplo_H1"]:
+        statVals["diplo_H1"][instanceIndex].append(1.0)
+        if "diplo_H12" in statVals:
+            statVals["diplo_H12"][instanceIndex].append(1.0)
+        if "diplo_H123" in statVals:
+            statVals["diplo_H123"][instanceIndex].append(1.0)
+        if "diplo_H2/H1" in statVals:
+            statVals["diplo_H2/H1"][instanceIndex].append(0.0)
+    elif statName == "diplo_ZnS":
+        statVals["diplo_ZnS"][instanceIndex].append(0.0)
+        statVals["diplo_Omega"][instanceIndex].append(0.0)
+    elif statName == "HapCount":
+        statVals[statName][instanceIndex].append(1)
+    elif statName in ["H1"]:
+        statVals["H1"][instanceIndex].append(1.0)
+        if "H12" in statVals:
+            statVals["H12"][instanceIndex].append(1.0)
+        if "H123" in statVals:
+            statVals["H123"][instanceIndex].append(1.0)
+        if "H2/H1" in statVals:
+            statVals["H2/H1"][instanceIndex].append(0.0)
+    elif statName == "ZnS":
+        statVals["ZnS"][instanceIndex].append(0.0)
+        statVals["Omega"][instanceIndex].append(0.0)
+    elif statName == "RH":
+        statVals["RH"][instanceIndex].append(0.0)
+        statVals["Omega"][instanceIndex].append(0.0)
+    elif statName == "iHSMean":
+        statVals["iHSMean"][instanceIndex].append(0.0)
+    elif statName == "nSLMean":
+        statVals["nSLMean"][instanceIndex].append(0.0)
+    elif statName == "iHSMax":
+        statVals["iHSMax"][instanceIndex].append(0.0)
+    elif statName == "nSLMax":
+        statVals["nSLMax"][instanceIndex].append(0.0)
+    elif statName in ["H12", "H123", "H2/H1","diplo_H12", "diplo_H123", "diplo_H2/H1", "Omega", "diplo_Omega"]:
+        #print(statName, statVals[statName][instanceIndex], subWinIndex+1)
+        assert len(statVals[statName][instanceIndex]) == subWinIndex+1
+    else:
+        statVals[statName][instanceIndex].append(0.0)
+
+def calcAndAppendStatValForScan(alleleCounts, snpLocs, statName, subWinStart, subWinEnd, statVals, subWinIndex, hapsInSubWin, unmasked, precomputedStats):
+    if statName == "tajD":
+        statVals[statName].append(allel.stats.diversity.tajima_d(alleleCounts, pos=snpLocs, start=subWinStart, stop=subWinEnd))
+    elif statName == "pi":
+        statVals[statName].append(allel.stats.diversity.sequence_diversity(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
+    elif statName == "thetaW":
+        statVals[statName].append(allel.stats.diversity.watterson_theta(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
+    elif statName == "thetaH":
+        statVals[statName].append(thetah(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
+    elif statName == "fayWuH":
+        statVals[statName].append(statVals["thetaH"][subWinIndex]-statVals["pi"][subWinIndex])
+    elif statName == "HapCount":
+        statVals[statName].append(len(hapsInSubWin.distinct()))
+    elif statName == "H1":
+        h1, h12, h123, h21 = allel.stats.selection.garud_h(hapsInSubWin)
+        statVals["H1"].append(h1)
+        if "H12" in statVals:
+            statVals["H12"].append(h12)
+        if "H123" in statVals:
+            statVals["H123"].append(h123)
+        if "H2/H1" in statVal:
+            statVals["H2/H1"].append(h21)
+    elif statName == "ZnS":
+        r2Matrix = shicstats.computeR2Matrix(hapsInSubWin)
+        statVals["ZnS"].append(shicstats.ZnS(r2Matrix)[0])
+        statVals["Omega"].append(shicstats.omega(r2Matrix)[0])
+    elif statName == "RH":
+        rMatrixFlat = allel.stats.ld.rogers_huff_r(hapsInSubWin.to_genotypes(ploidy=2).to_n_alt())
+        rhAvg = rMatrixFlat.mean()
+        statVals["RH"].append(rhAvg)
+        r2Matrix = squareform(rMatrixFlat ** 2)
+        statVals["Omega"].append(shicstats.omega(r2Matrix)[0])
+    elif statName == "iHSMean":
+        vals = [x for x in precomputedStats["iHS"][subWinIndex] if not (math.isnan(x) or math.isinf(x))]
+        if len(vals) == 0:
+            statVals["iHSMean"].append(0.0)
+        else:
+            statVals["iHSMean"].append(sum(vals)/float(len(vals)))
+    elif statName == "nSLMean":
+        vals = [x for x in precomputedStats["nSL"][subWinIndex] if not (math.isnan(x) or math.isnan(x))]
+        if len(vals) == 0:
+            statVals["nSLMean"].append(0.0)
+        else:
+            statVals["nSLMean"].append(sum(vals)/float(len(vals)))
+    elif statName == "iHSMax":
+        vals = [x for x in precomputedStats["iHS"][subWinIndex] if not (math.isnan(x) or math.isinf(x))]
+        if len(vals) == 0:
+            maxVal = 0.0
+        else:
+            maxVal = max(vals)
+        statVals["iHSMax"].append(maxVal)
+    elif statName == "nSLMax":
+        vals = [x for x in precomputedStats["nSL"][subWinIndex] if not (math.isnan(x) or math.isnan(x))]
+        if len(vals) == 0:
+            maxVal = 0.0
+        else:
+            maxVal = max(vals)
+        statVals["nSLMax"].append(maxVal)
+    elif statName == "iHSOutFrac":
+        statVals["iHSOutFrac"].append(getOutlierFrac(precomputedStats["iHS"][subWinIndex]))
+    elif statName == "nSLOutFrac":
+        statVals["nSLOutFrac"].append(getOutlierFrac(precomputedStats["nSL"][subWinIndex]))
+    elif statName == "distVar":
+        dists = shicstats.pairwiseDiffs(hapsInSubWin)/float(unmasked[subWinStart-1:subWinEnd].count(True))
+        statVals["distVar"].append(np.var(dists, ddof=1))
+        statVals["distSkew"].append(scipy.stats.skew(dists))
+        statVals["distKurt"].append(scipy.stats.kurtosis(dists))
+    elif statName in ["H12", "H123", "H2/H1", "Omega", "distVar", "distSkew", "distKurt"]:
+        assert len(statVals[statName]) == subWinIndex+1
+
+def appendStatValsForMonomorphicForScan(statName, statVals, subWinIndex):
+    if statName == "tajD":
+        statVals[statName].append(0.0)
+    elif statName == "pi":
+        statVals[statName].append(0.0)
+    elif statName == "thetaW":
+        statVals[statName].append(0.0)
+    elif statName == "thetaH":
+        statVals[statName].append(0.0)
+    elif statName == "fayWuH":
+        statVals[statName].append(0.0)
+    elif statName == "HapCount":
+        statVals[statName].append(1)
+    elif statName in ["H1"]:
+        statVals["H1"].append(1.0)
+        if "H12" in statVals:
+            statVals["H12"].append(1.0)
+        if "H123" in statVals:
+            statVals["H123"].append(1.0)
+        if "H2/H1" in statVals:
+            statVals["H2/H1"].append(0.0)
+    elif statName == "ZnS":
+        statVals["ZnS"].append(0.0)
+        statVals["Omega"].append(0.0)
+    elif statName == "RH":
+        statVals["RH"].append(0.0)
+        statVals["Omega"].append(0.0)
+    elif statName == "iHSMean":
+        statVals["iHSMean"].append(0.0)
+    elif statName == "nSLMean":
+        statVals["nSLMean"].append(0.0)
+    elif statName == "iHSMax":
+        statVals["iHSMax"].append(0.0)
+    elif statName == "nSLMax":
+        statVals["nSLMax"].append(0.0)
+    elif statName in ["H12", "H123", "H2/H1", "Omega"]:
+        #print statName, len(statVals[statName][instanceIndex]), subWinIndex+1
+        assert len(statVals[statName]) == subWinIndex+1
+    else:
+        statVals[statName].append(0.0)
+
+'''
+WARNING: this code assumes that the second column of ac gives the derived alleles;
+please ensure that this is the case (and that you are using polarized data) if
+are going to use values of this statistic for the classifier!!
+'''
+def thetah(pos, ac, start=None, stop=None, is_accessible=None):
+    # check inputs
+    if not isinstance(pos, SortedIndex):
+        pos = SortedIndex(pos, copy=False)
+    ac = asarray_ndim(ac, 2)
+    is_accessible = asarray_ndim(is_accessible, 1, allow_none=True)
+
+    # deal with subregion
+    if start is not None or stop is not None:
+        loc = pos.locate_range(start, stop)
+        pos = pos[loc]
+        ac = ac[loc]
+    if start is None:
+        start = pos[0]
+    if stop is None:
+        stop = pos[-1]
+
+    # calculate values of the stat
+    dafCounts = ac[: ,1]
+    sampleSizes = sum([ac[i] for i in range(len(ac))])
+    h = 0
+    for i in range(len(ac)):
+        p1 = ac[i, 1]
+        n = p1+ac[i, 0]
+        if n > 1:
+            h += (p1*p1)/(n*(n-1.0))
+    h *= 2
+
+    # calculate value per base
+    if is_accessible is None:
+        n_bases = stop - start + 1
+    else:
+        n_bases = np.count_nonzero(is_accessible[start-1:stop])
+
+    h = h / n_bases
+    return h
