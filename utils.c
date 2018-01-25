@@ -7,7 +7,7 @@ double r2(int nSamps, int *haps, int i, int j){
 	double count = 0.0;
 	int k;
 	for(k=0; k<nSamps; k++){
-		if((haps[i*nSamps + k] == 1 || haps[i*nSamps + k] == 0) && (haps[j*nSamps + k] != 1 || haps[j*nSamps + k] != 0)){
+		if((haps[i*nSamps + k] == 1 || haps[i*nSamps + k] == 0) && (haps[j*nSamps + k] == 1 || haps[j*nSamps + k] == 0)){
 			if(haps[i*nSamps + k] == 1)
 				pi++;
 
@@ -149,4 +149,68 @@ void pairwiseDiffsDiplo(int nSamps, int nSnps, int *haps, double *diffLs){
 			pairsSeen += 1;
 		}
 	}
+}
+
+void getHaplotypeFreqSpec(int nSamps, int nSnps, int *haps, int *hapCounts)
+{
+        int i;
+        int j;
+        int k;
+        int haplotype_found;
+        int allsame;
+        int freq;
+
+        int nHaps = 0;
+        int haplotypes[nSnps*nSamps];
+        int haplotype_occurrences[nSamps];
+
+        for(i=0; i<nSamps; i++)
+        {
+		hapCounts[i] = 0;
+		haplotype_occurrences[i] = 0;
+        }
+
+        for(i=0; i<nSamps; i++)
+        {
+		haplotype_found = 0;
+		for(j=0; j<nHaps; j++)
+		{
+			allsame = 1;
+			for(k=0; k<nSnps; k++)
+			{
+				if((haplotypes[k*nSamps + j] != haps[k*nSamps + i]) && (haplotypes[k*nSamps + j] != -1) && (haps[k*nSamps + i] != -1))
+				{
+					allsame = 0;
+					break;
+			        }
+			}
+
+			if(allsame)
+			{
+			        haplotype_found = 1;
+		        	haplotype_occurrences[j]+=1;
+			        break;
+			}
+	    	}
+
+		if(!haplotype_found)
+		{
+			nHaps++;
+			for(j=0; j<nSnps; j++)
+			{
+			        haplotypes[j*nSamps + nHaps-1] = haps[j*nSamps + i];
+			}
+			haplotype_occurrences[nHaps-1]=1;
+		}
+        }
+
+	for (i=0; i<nHaps; i++)
+	{
+		freq = haplotype_occurrences[i];
+		if (freq > 0 && freq <= nSamps)
+		{
+			hapCounts[freq-1] += 1;
+		}
+	}
+	hapCounts[nSamps] = nHaps;
 }

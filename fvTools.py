@@ -356,7 +356,7 @@ def calcAndAppendStatVal(alleleCounts, snpLocs, statName, subWinStart, subWinEnd
     elif statName in ["H12", "H123", "H2/H1", "Omega", "distVar", "distSkew", "distKurt"]:
         assert len(statVals[statName][instanceIndex]) == subWinIndex+1
 
-def calcAndAppendStatValDiplo(alleleCounts, snpLocs, statName, subWinStart, subWinEnd, statVals, instanceIndex, subWinIndex, hapsInSubWin,genosInSubWin, unmasked, precomputedStats):
+def calcAndAppendStatValDiplo(alleleCounts, snpLocs, statName, subWinStart, subWinEnd, statVals, instanceIndex, subWinIndex, genosInSubWin, unmasked):
     genosNAlt = genosInSubWin.to_n_alt()
     if statName == "tajD":
         statVals[statName][instanceIndex].append(allel.stats.diversity.tajima_d(alleleCounts, pos=snpLocs, start=subWinStart, stop=subWinEnd))
@@ -371,29 +371,25 @@ def calcAndAppendStatValDiplo(alleleCounts, snpLocs, statName, subWinStart, subW
     elif statName == "HapCount":
         statVals[statName][instanceIndex].append(len(hapsInSubWin.distinct()))
     elif statName == "nDiplos":
-        statVals["nDiplos"][instanceIndex].append(np.unique(genosNAlt,axis=1).shape[1])
-    elif statName == "H1":
-        h1, h12, h123, h21 = allel.stats.selection.garud_h(hapsInSubWin)
-        statVals["H1"][instanceIndex].append(h1)
-        if "H12" in statVals:
-            statVals["H12"][instanceIndex].append(h12)
-        if "H123" in statVals:
-            statVals["H123"][instanceIndex].append(h123)
-        if "H2/H1" in statVals:
-            statVals["H2/H1"][instanceIndex].append(h21)
-    elif statName == "diplo_H1":
-        dh1, dh12, dh123, dh21 = allel.stats.selection.garud_h(genosNAlt)
-        statVals["diplo_H1"][instanceIndex].append(dh1)
+        diplotypeCounts = shicstats.getHaplotypeFreqSpec(genosNAlt)
+        nDiplos = diplotypeCounts[genosNAlt.shape[1]]
+        statVals["nDiplos"][instanceIndex].append(nDiplos)
+        diplotypeCounts = diplotypeCounts[:-1]
+        np.set_printoptions(threshold=np.inf)
+        print(instanceIndex, subWinIndex, instanceIndex*11 + subWinIndex)
+        print(genosNAlt.shape)
+        for row in np.transpose(genosNAlt):
+            print("".join([str(x) for x in row]))
+        print("")
+        dh1 = garudH1(diplotypeCounts)
+        dh2 = garudH2(diplotypeCounts)
+        dh12 = garudH12(diplotypeCounts)
+        if "diplo_H1" in statVals:
+            statVals["diplo_H1"][instanceIndex].append(dh1)
         if "diplo_H12" in statVals:
             statVals["diplo_H12"][instanceIndex].append(dh12)
-        if "diplo_H123" in statVals:
-            statVals["diplo_H123"][instanceIndex].append(dh123)
         if "diplo_H2/H1" in statVals:
-            statVals["diplo_H2/H1"][instanceIndex].append(dh21)
-    elif statName == "ZnS":
-        r2Matrix = shicstats.computeR2Matrix(hapsInSubWin)
-        statVals["ZnS"][instanceIndex].append(shicstats.ZnS(r2Matrix)[0])
-        statVals["Omega"][instanceIndex].append(shicstats.omega(r2Matrix)[0])
+            statVals["diplo_H2/H1"][instanceIndex].append(dh2/dh1)
     elif statName == "diplo_ZnS":
         if genosNAlt.shape[0] == 1:
             statVals["diplo_ZnS"][instanceIndex].append(0.0)
@@ -403,48 +399,12 @@ def calcAndAppendStatValDiplo(alleleCounts, snpLocs, statName, subWinStart, subW
             statVals["diplo_ZnS"][instanceIndex].append(np.nanmean(r2Matrix))
             r2Matrix2 = squareform(r2Matrix ** 2)
             statVals["diplo_Omega"][instanceIndex].append(shicstats.omega(r2Matrix2)[0])
-    elif statName == "RH":
-        rMatrixFlat = allel.stats.ld.rogers_huff_r(hapsInSubWin.to_genotypes(ploidy=2).to_n_alt())
-        rhAvg = rMatrixFlat.mean()
-        statVals["RH"][instanceIndex].append(rhAvg)
-        r2Matrix = squareform(rMatrixFlat ** 2)
-        statVals["Omega"][instanceIndex].append(shicstats.omega(r2Matrix)[0])
-    elif statName == "iHSMean":
-        vals = [x for x in precomputedStats["iHS"][subWinIndex] if not (math.isnan(x) or math.isinf(x))]
-        if len(vals) == 0:
-            statVals["iHSMean"][instanceIndex].append(0.0)
-        else:
-            statVals["iHSMean"][instanceIndex].append(sum(vals)/float(len(vals)))
-    elif statName == "nSLMean":
-        vals = [x for x in precomputedStats["nSL"][subWinIndex] if not (math.isnan(x) or math.isinf(x))]
-        if len(vals) == 0:
-            statVals["nSLMean"][instanceIndex].append(0.0)
-        else:
-            statVals["nSLMean"][instanceIndex].append(sum(vals)/float(len(vals)))
-    elif statName == "iHSMax":
-        vals = [x for x in precomputedStats["iHS"][subWinIndex] if not (math.isnan(x) or math.isinf(x))]
-        if len(vals) == 0:
-            maxVal = 0.0
-        else:
-            maxVal = max(vals)
-        statVals["iHSMax"][instanceIndex].append(maxVal)
-    elif statName == "nSLMax":
-        vals = [x for x in precomputedStats["nSL"][subWinIndex] if not (math.isnan(x) or math.isinf(x))]
-        if len(vals) == 0:
-            maxVal = 0.0
-        else:
-            maxVal = max(vals)
-        statVals["nSLMax"][instanceIndex].append(maxVal)
-    elif statName == "iHSOutFrac":
-        statVals["iHSOutFrac"][instanceIndex].append(getOutlierFrac(precomputedStats["iHS"][subWinIndex]))
-    elif statName == "nSLOutFrac":
-        statVals["nSLOutFrac"][instanceIndex].append(getOutlierFrac(precomputedStats["nSL"][subWinIndex]))
     elif statName == "distVar":
         dists = shicstats.pairwiseDiffsDiplo(genosNAlt)/float(unmasked[subWinStart-1:subWinEnd].count(True))
         statVals["distVar"][instanceIndex].append(np.var(dists, ddof=1))
         statVals["distSkew"][instanceIndex].append(scipy.stats.skew(dists))
         statVals["distKurt"][instanceIndex].append(scipy.stats.kurtosis(dists))
-    elif statName in ["H12", "H123", "H2/H1","diplo_H12", "diplo_H123", "diplo_H2/H1", "Omega", "distVar", "distSkew", "distKurt", "diplo_Omega"]:
+    elif statName in ["diplo_H12", "diplo_H123", "diplo_H2/H1", "distVar", "distSkew", "distKurt", "diplo_Omega"]:
         if not len(statVals[statName][instanceIndex]) == subWinIndex+1:
             print(statName,instanceIndex,subWinIndex+1)
             print(statVals["diplo_H1"][instanceIndex], statVals["diplo_H12"][instanceIndex])
@@ -672,3 +632,44 @@ def thetah(pos, ac, start=None, stop=None, is_accessible=None):
 
     h = h / n_bases
     return h
+
+def garudH1(hapCounts):
+    h1 = 0.0
+
+    for hapFreq in range(len(hapCounts), 0, -1):
+        pi = hapFreq/float(len(hapCounts));
+        h1 += hapCounts[hapFreq-1]*pi*pi;
+
+    return h1
+
+def garudH2(hapCounts):
+    h2 = 0.0
+    first = True
+
+    for hapFreq in range(len(hapCounts), 0, -1):
+        pi = hapFreq/float(len(hapCounts))
+        if hapCounts[hapFreq-1] > 0:
+            if first:
+                first = False
+                h2 += (hapCounts[hapFreq-1]-1)*pi*pi
+            else:
+                h2 += hapCounts[hapFreq-1]*pi*pi
+
+    return h2
+
+def garudH12(hapCounts):
+    part1, part2 = 0.0, 0.0
+    totalAdded = 0
+
+    for hapFreq in range(len(hapCounts), 0, -1):
+        pi = hapFreq/float(len(hapCounts))
+        for i in range(hapCounts[hapFreq-1]):
+            if totalAdded < 2:
+                part1 += pi
+            else:
+                part2 += pi*pi
+            totalAdded += 1
+
+    part1 = part1*part1
+
+    return part1+part2

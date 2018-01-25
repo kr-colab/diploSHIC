@@ -39,5 +39,12 @@ interface
     integer intent(hide), depend(haps) :: nSnps = shape(haps, 0)
     integer intent(hide), depend(haps) :: nSamps = shape(haps, 1)
   end subroutine pairwiseDiffsDiplo
+  subroutine getHaplotypeFreqSpec(nSamps,nSnps,haps,hapCounts)
+    intent(c) getHaplotypeFreqSpec
+    intent(c)
+    integer intent(in), dimension(nSnps, nSamps) :: haps
+    integer intent(out), dimension(nSamps+1) :: hapCounts
+    integer intent(hide), depend(haps) :: nSnps = shape(haps, 0)
+    integer intent(hide), depend(haps) :: nSamps = shape(haps, 1)
 end interface
 end python module shicstats

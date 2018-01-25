@@ -7,7 +7,7 @@ from fvTools import *
 import time
 
 '''usage example
-python makeFeatureVecsForSingleMsFileDiploid.py /san/data/dan/simulations/discoal_multipopStuff/spatialSVMSims/trainingSets/equilibNeut.msout.gz 110000 11 /san/data/ag1kg/accessibility/Anopheles-gambiae-PEST_CHROMOSOMES_AgamP3.accessible.fa /san/data/ag1kg/outgroups/anc.meru_mela.fa 2L,2R,3L,3R 0.25 0.01 trainingSetsStats/ trainingSetsFeatureVecs/equilibNeut.msout.gz.fvec
+python makeFeatureVecsForSingleMsDiploid.py /san/data/dan/simulations/discoal_multipopStuff/spatialSVMSims/trainingSets/equilibNeut.msout.gz 110000 11 /san/data/ag1kg/accessibility/Anopheles-gambiae-PEST_CHROMOSOMES_AgamP3.accessible.fa /san/data/ag1kg/outgroups/anc.meru_mela.fa 2L,2R,3L,3R 0.25 0.01 trainingSetsStats/ trainingSetsFeatureVecs/equilibNeut.msout.gz.fvec
 '''
 
 trainingDataFileName, totalPhysLen, numSubWins, maskFileName, ancFileName, chrArmsForMasking, unmaskedFracCutoff, pMisPol, outStatsDir, fvecFileName = sys.argv[1:]
@@ -118,32 +118,6 @@ for instanceIndex in range(numInstances):
         dafs = alleleCountsUnmaskedOnly[:,1]/float(sampleSizes[0])
         unmaskedHaps = haps.subset(sel0=unmaskedSnpIndices)
         unmaskedGenos = genos.subset(sel0=unmaskedSnpIndices)
-        precomputedStats = {}
-        #if "iHSMean" in statNames or "iHSMax" in statNames:
-        #    ihsVals = allel.stats.selection.ihs(unmaskedHaps, positionArrayUnmaskedOnly, use_threads=False, include_edges=False)
-        #    nonNanCount = [x for x in np.isnan(ihsVals)].count(False)
-        #    nonInfCount = [x for x in np.isinf(ihsVals)].count(False)
-        #    sys.stderr.write("number of iHS scores: %d; non-nan: %d; %d non-inf\n" %(len(ihsVals), nonNanCount, nonInfCount))
-        #    if nonNanCount == 0:
-        #        precomputedStats["iHS"]=[]
-        #        for subWinIndex in range(numSubWins):
-        #            precomputedStats["iHS"].append([])
-        #    else:
-        #        #ihsVals, bins = allel.stats.selection.standardize_by_allele_count(ihsVals, dac, n_bins=20, diagnostics=False)
-        #        ihsVals = standardize_by_allele_count_from_precomp_bins(ihsVals, dafs, standardizationInfo["iHS"])
-        #        precomputedStats["iHS"]=windowVals(ihsVals, subWinBounds, positionArrayUnmaskedOnly, keepNans=False, absVal=True)
-        #if "nSLMean" in statNames or "nSLMax" in statNames:
-        #    nslVals = allel.stats.selection.nsl(unmaskedHaps, use_threads=False)
-        #    nonNanCount = [x for x in np.isnan(nslVals)].count(False)
-        #    #sys.stderr.write("number of nSL scores: %d; non-nan: %d\n" %(len(nslVals), nonNanCount))
-        #    if nonNanCount == 0:
-        #        precomputedStats["nSL"]=[]
-        #        for subWinIndex in range(numSubWins):
-        #            precomputedStats["nSL"].append([])
-        #    else:
-        #        #nslVals, bins = allel.stats.selection.standardize_by_allele_count(nslVals, dac, n_bins=20, diagnostics=False)
-        #        nslVals = standardize_by_allele_count_from_precomp_bins(nslVals, dafs, standardizationInfo["nSL"])
-        #        precomputedStats["nSL"]=windowVals(nslVals, subWinBounds, positionArrayUnmaskedOnly, keepNans=False, absVal=True)
         for statName in statNames:
             statVals[statName].append([])
         for subWinIndex in range(numSubWins):
@@ -156,7 +130,7 @@ for instanceIndex in range(numInstances):
                 genosInSubWin = genos.subset(sel0=snpIndicesInSubWinUnmasked)
                 for statName in statNames:
                     calcAndAppendStatValDiplo(alleleCountsUnmaskedOnly, positionArrayUnmaskedOnly, statName, subWinStart, \
-                                 subWinEnd, statVals, instanceIndex, subWinIndex, hapsInSubWin, genosInSubWin, unmasked, precomputedStats)
+                                 subWinEnd, statVals, instanceIndex, subWinIndex, genosInSubWin, unmasked)
             else:
                 for statName in statNames:
                     appendStatValsForMonomorphic(statName, statVals, instanceIndex, subWinIndex)
@@ -175,7 +149,6 @@ with open(fvecFileName, "w") as fvecFile:
             statLines.append([])
         outVec = []
         for statName in statNames:
-            #print(statName)
             outVec += normalizeFeatureVec(statVals[statName][i])
             for subWinIndex in range(numSubWins):
                 statLines[subWinIndex].append(statVals[statName][i][subWinIndex])
