@@ -375,12 +375,6 @@ def calcAndAppendStatValDiplo(alleleCounts, snpLocs, statName, subWinStart, subW
         nDiplos = diplotypeCounts[genosNAlt.shape[1]]
         statVals["nDiplos"][instanceIndex].append(nDiplos)
         diplotypeCounts = diplotypeCounts[:-1]
-        np.set_printoptions(threshold=np.inf)
-        print(instanceIndex, subWinIndex, instanceIndex*11 + subWinIndex)
-        print(genosNAlt.shape)
-        for row in np.transpose(genosNAlt):
-            print("".join([str(x) for x in row]))
-        print("")
         dh1 = garudH1(diplotypeCounts)
         dh2 = garudH2(diplotypeCounts)
         dh12 = garudH12(diplotypeCounts)
