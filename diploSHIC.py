@@ -1,13 +1,6 @@
 import argparse,time,sys,os
 
 ################# use argparse to get CL args and make sure we are kosher
-
-class MyParser(argparse.ArgumentParser):
-    def error(self, message):
-        sys.stderr.write('error: %s\n' % message)
-        self.print_help()
-        sys.exit(2)
-
 parser = argparse.ArgumentParser(description='train or predict with diploSHIC')
 subparsers = parser.add_subparsers(help='sub-command help')
 parser_a = subparsers.add_parser('train', help='training mode help')
@@ -28,14 +21,11 @@ parser_b.add_argument('predictFile', help='input file to predict')
 parser_b.add_argument('predictFileOutput', help='output file name')
 parser_b.set_defaults(mode='predict')
 
-
-
 if len(sys.argv)==1:
     parser.print_help()
     sys.exit(1)
 args = parser.parse_args()
 argsDict = vars(args)
-#print(args)
 
 ###########################################################
 # Import a bunch of libraries if everything checks out
@@ -232,9 +222,9 @@ elif argsDict['mode'] == 'predict':
 	
 	#output the predictions
 	outputFile = open(argsDict['predictFileOutput'],'w')
-	outputFile.write('chrom\tchromStart\tchromEnd\tbigWin\tpredClass\tprob(neutral)\tprob(likedSoft)\tprob(linkedHard)\tprob(soft)\tprob(hard)\n')
+	outputFile.write('chrom\tclassifiedWinStart\tclassifiedWinEnd\tbigWinRange\tpredClass\tprob(neutral)\tprob(likedSoft)\tprob(linkedHard)\tprob(soft)\tprob(hard)\n')
 	for index, row in x_df.iterrows():
-	    outputFile.write('{}\t{}\t{}\t{}\t{}\t{:f}\t{:f}\t{:f}\t{:f}\t{:f}\n'.format( row['chrom'],row['chromStart'],row['chromEnd'],row['bigWin'], \
+	    outputFile.write('{}\t{}\t{}\t{}\t{}\t{:f}\t{:f}\t{:f}\t{:f}\t{:f}\n'.format( row['chrom'],row['classifiedWinStart'],row['classifiedWinEnd'],row['bigWinRange'], \
 		classDict[predictions[index]],preds[index][1],preds[index][3],preds[index][4],preds[index][2],preds[index][0]))
 	outputFile.close
 	print("{} predictions complete".format(index+1))
