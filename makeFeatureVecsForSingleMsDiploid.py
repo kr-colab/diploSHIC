@@ -10,12 +10,9 @@ import time
 python makeFeatureVecsForSingleMsDiploid.py /san/data/dan/simulations/discoal_multipopStuff/spatialSVMSims/trainingSets/equilibNeut.msout.gz 110000 11 /san/data/ag1kg/accessibility/Anopheles-gambiae-PEST_CHROMOSOMES_AgamP3.accessible.fa /san/data/ag1kg/outgroups/anc.meru_mela.fa 2L,2R,3L,3R 0.25 0.01 trainingSetsStats/ trainingSetsFeatureVecs/equilibNeut.msout.gz.fvec
 '''
 
-trainingDataFileName, totalPhysLen, numSubWins, maskFileName, ancFileName, chrArmsForMasking, unmaskedFracCutoff, pMisPol, outStatsDir, fvecFileName = sys.argv[1:]
+trainingDataFileName, totalPhysLen, numSubWins, maskFileName, ancFileName, chrArmsForMasking, unmaskedFracCutoff, outStatsDir, fvecFileName = sys.argv[1:]
 totalPhysLen = int(totalPhysLen)
 numSubWins = int(numSubWins)
-pMisPol = float(pMisPol)
-#below was the old call to get the iHS normalizations
-#standardizationInfo = readStatsDafsComputeStandardizationBins(statAndDafFileName, nBins=50, pMisPol=pMisPol)
 subWinLen = totalPhysLen//numSubWins
 assert totalPhysLen % numSubWins == 0 and numSubWins > 1
 chrArmsForMasking = chrArmsForMasking.split(",")
@@ -113,8 +110,6 @@ for instanceIndex in range(numInstances):
         alleleCountsUnmaskedOnly = allel.AlleleCountsArray(np.array([ac[i] for i in unmaskedSnpIndices]))
         sampleSizes = [sum(x) for x in alleleCountsUnmaskedOnly]
         assert len(set(sampleSizes)) == 1
-        if pMisPol > 0:
-            alleleCountsUnmaskedOnly = misPolarizeAlleleCounts(alleleCountsUnmaskedOnly, pMisPol)
         dafs = alleleCountsUnmaskedOnly[:,1]/float(sampleSizes[0])
         unmaskedHaps = haps.subset(sel0=unmaskedSnpIndices)
         unmaskedGenos = genos.subset(sel0=unmaskedSnpIndices)
