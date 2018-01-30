@@ -111,7 +111,6 @@ for instanceIndex in range(numInstances):
         sampleSizes = [sum(x) for x in alleleCountsUnmaskedOnly]
         assert len(set(sampleSizes)) == 1
         dafs = alleleCountsUnmaskedOnly[:,1]/float(sampleSizes[0])
-        unmaskedHaps = haps.subset(sel0=unmaskedSnpIndices)
         unmaskedGenos = genos.subset(sel0=unmaskedSnpIndices)
         for statName in statNames:
             statVals[statName].append([])
@@ -121,7 +120,6 @@ for instanceIndex in range(numInstances):
             assert unmaskedFrac >= unmaskedFracCutoff
             snpIndicesInSubWinUnmasked = [x for x in snpIndicesInSubWins[subWinIndex] if unmasked[positionArrays[instanceIndex][x]-1]]
             if len(snpIndicesInSubWinUnmasked) > 0:
-                hapsInSubWin = haps.subset(sel0=snpIndicesInSubWinUnmasked)
                 genosInSubWin = genos.subset(sel0=snpIndicesInSubWinUnmasked)
                 for statName in statNames:
                     calcAndAppendStatValDiplo(alleleCountsUnmaskedOnly, positionArrayUnmaskedOnly, statName, subWinStart, \

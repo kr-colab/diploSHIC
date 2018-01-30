@@ -404,6 +404,54 @@ def calcAndAppendStatValDiplo(alleleCounts, snpLocs, statName, subWinStart, subW
             print(statVals["diplo_H1"][instanceIndex], statVals["diplo_H12"][instanceIndex])
             sys.exit()
 
+def calcAndAppendStatValForScanDiplo(alleleCounts, snpLocs, statName, subWinStart, subWinEnd, statVals, subWinIndex, genosInSubWin, unmasked):
+    genosNAlt = genosInSubWin.to_n_alt()
+    if statName == "tajD":
+        statVals[statName].append(allel.stats.diversity.tajima_d(alleleCounts, pos=snpLocs, start=subWinStart, stop=subWinEnd))
+    elif statName == "pi":
+        statVals[statName].append(allel.stats.diversity.sequence_diversity(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
+    elif statName == "thetaW":
+        statVals[statName].append(allel.stats.diversity.watterson_theta(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
+    elif statName == "thetaH":
+        statVals[statName].append(thetah(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
+    elif statName == "fayWuH":
+        statVals[statName].append(statVals["thetaH"][subWinIndex]-statVals["pi"][subWinIndex])
+    elif statName == "HapCount":
+        statVals[statName].append(len(hapsInSubWin.distinct()))
+    elif statName == "nDiplos":
+        diplotypeCounts = shicstats.getHaplotypeFreqSpec(genosNAlt)
+        nDiplos = diplotypeCounts[genosNAlt.shape[1]]
+        statVals["nDiplos"].append(nDiplos)
+        diplotypeCounts = diplotypeCounts[:-1]
+        dh1 = garudH1(diplotypeCounts)
+        dh2 = garudH2(diplotypeCounts)
+        dh12 = garudH12(diplotypeCounts)
+        if "diplo_H1" in statVals:
+            statVals["diplo_H1"].append(dh1)
+        if "diplo_H12" in statVals:
+            statVals["diplo_H12"].append(dh12)
+        if "diplo_H2/H1" in statVals:
+            statVals["diplo_H2/H1"].append(dh2/dh1)
+    elif statName == "diplo_ZnS":
+        if genosNAlt.shape[0] == 1:
+            statVals["diplo_ZnS"].append(0.0)
+            statVals["diplo_Omega"].append(0.0)
+        else:
+            r2Matrix = allel.rogers_huff_r(genosNAlt,fill=0.0)
+            statVals["diplo_ZnS"].append(np.nanmean(r2Matrix))
+            r2Matrix2 = squareform(r2Matrix ** 2)
+            statVals["diplo_Omega"].append(shicstats.omega(r2Matrix2)[0])
+    elif statName == "distVar":
+        dists = shicstats.pairwiseDiffsDiplo(genosNAlt)/float(unmasked[subWinStart-1:subWinEnd].count(True))
+        statVals["distVar"].append(np.var(dists, ddof=1))
+        statVals["distSkew"].append(scipy.stats.skew(dists))
+        statVals["distKurt"].append(scipy.stats.kurtosis(dists))
+    elif statName in ["diplo_H12", "diplo_H123", "diplo_H2/H1", "distVar", "distSkew", "distKurt", "diplo_Omega"]:
+        if not len(statVals[statName]) == subWinIndex+1:
+            print(statName,subWinIndex+1)
+            print(statVals["diplo_H1"], statVals["diplo_H12"])
+            sys.exit()
+
 def getOutlierFrac(vals, cutoff=2.0):
     if len(vals) == 0:
         return 0.0
@@ -555,6 +603,19 @@ def appendStatValsForMonomorphicForScan(statName, statVals, subWinIndex):
         statVals[statName].append(0.0)
     elif statName == "fayWuH":
         statVals[statName].append(0.0)
+    elif statName == "nDiplos":
+        statVals[statName].append(1)
+    elif statName in ["diplo_H1"]:
+        statVals["diplo_H1"].append(1.0)
+        if "diplo_H12" in statVals:
+            statVals["diplo_H12"].append(1.0)
+        if "diplo_H123" in statVals:
+            statVals["diplo_H123"].append(1.0)
+        if "diplo_H2/H1" in statVals:
+            statVals["diplo_H2/H1"].append(0.0)
+    elif statName == "diplo_ZnS":
+        statVals["diplo_ZnS"].append(0.0)
+        statVals["diplo_Omega"].append(0.0)
     elif statName == "HapCount":
         statVals[statName].append(1)
     elif statName in ["H1"]:
@@ -579,8 +640,8 @@ def appendStatValsForMonomorphicForScan(statName, statVals, subWinIndex):
         statVals["iHSMax"].append(0.0)
     elif statName == "nSLMax":
         statVals["nSLMax"].append(0.0)
-    elif statName in ["H12", "H123", "H2/H1", "Omega"]:
-        #print statName, len(statVals[statName][instanceIndex]), subWinIndex+1
+    elif statName in ["H12", "H123", "H2/H1","diplo_H12", "diplo_H123", "diplo_H2/H1", "Omega", "diplo_Omega"]:
+        #print(statName, statVals[statName][instanceIndex], subWinIndex+1)
         assert len(statVals[statName]) == subWinIndex+1
     else:
         statVals[statName].append(0.0)
