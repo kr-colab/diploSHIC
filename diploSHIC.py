@@ -2,6 +2,7 @@ import argparse,time,sys,os
 
 ################# use argparse to get CL args and make sure we are kosher
 parser = argparse.ArgumentParser(description='train or predict with diploSHIC')
+parser._positionals.title = 'required arguments'
 subparsers = parser.add_subparsers(help='sub-command help')
 parser_a = subparsers.add_parser('train', help='training mode help')
 parser_a.add_argument('nDims', metavar='nDims', type=int, 
@@ -11,6 +12,7 @@ parser_a.add_argument('testDir', help='path to test set files, can be same as tr
 parser_a.add_argument('outputModel', help='file name for output model, will create two files one with structure one with weights')
 parser_a.add_argument('--epochs', type=int, help='max epochs for training CNN', default=100)
 parser_a.set_defaults(mode='train')
+parser_a._positionals.title = 'required arguments'
 
 parser_b = subparsers.add_parser('predict', help='prediction mode help')
 parser_b.add_argument('nDims', metavar='nDims', type=int, 
@@ -20,6 +22,8 @@ parser_b.add_argument('modelWeights', help='path to CNN weights .h5 file')
 parser_b.add_argument('predictFile', help='input file to predict')
 parser_b.add_argument('predictFileOutput', help='output file name')
 parser_b.set_defaults(mode='predict')
+parser_b._positionals.title = 'required arguments'
+
 
 if len(sys.argv)==1:
     parser.print_help()
