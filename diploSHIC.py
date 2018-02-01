@@ -4,7 +4,7 @@ import argparse,time,sys,subprocess
 parser = argparse.ArgumentParser(description='calculate feature fectors, train, or predict with diploSHIC')
 parser._positionals.title = 'possible modes (enter \'python diploSHIC.py modeName -h\' for modeName\'s help message'
 subparsers = parser.add_subparsers(help='sub-command help')
-parser_a = subparsers.add_parser('train', help='training mode help')
+parser_a = subparsers.add_parser('train', help='train and test a shic CNN')
 parser_a.add_argument('nDims', metavar='nDims', type=int, 
                    help='dimensionality of the feature vector')
 parser_a.add_argument('trainDir', help='path to training set files')
@@ -14,7 +14,7 @@ parser_a.add_argument('--epochs', type=int, help='max epochs for training CNN', 
 parser_a.set_defaults(mode='train')
 parser_a._positionals.title = 'required arguments'
 
-parser_b = subparsers.add_parser('predict', help='prediction mode help')
+parser_b = subparsers.add_parser('predict', help='perform prediction using an already-trained SHIC CNN')
 parser_b.add_argument('nDims', metavar='nDims', type=int, 
                    help='dimensionality of the feature vector')
 parser_b.add_argument('modelStructure', help='path to CNN structure .json file')
@@ -24,7 +24,9 @@ parser_b.add_argument('predictFileOutput', help='output file name')
 parser_b.set_defaults(mode='predict')
 parser_b._positionals.title = 'required arguments'
 
-parser_c = subparsers.add_parser('fvecSimDiplo', help='fvecSimDiplo mode help')
+parser_c = subparsers.add_parser('fvecSim', help='Generate feature vectors from simulated data')
+parser_c.add_argument('shicMode', help='specifies whether to use original haploid SHIC (use \'haploid\') or diploSHIC (\'diploid\')',
+                          default='diploid')
 parser_c.add_argument('msOutFile', help='path to simulation output file (must be same format used by Hudson\'s ms)')
 parser_c.add_argument('fvecFileName', help='path to file where feature vectors will be written')
 parser_c.add_argument('--totalPhysLen', type=int, help='Length of simulated chromosome for converting infinite sites ms output to finite sites',
@@ -37,10 +39,18 @@ parser_c.add_argument('--chrArmsForMasking', help=('A comma-separated list (no s
 parser_c.add_argument('--unmaskedFracCutoff', type=float, help='Minimum fraction of unmasked sites, if masking simulated data', default=0.25)
 parser_c.add_argument('--outStatsDir', help='Path to a directory where values of each statistic in each subwindow are recorded for each rep',
                           default="None")
-parser_c.set_defaults(mode='fvecSimDiplo')
+parser_c.add_argument('--ancFileName', help=('Path to a fasta-formatted file that contains inferred ancestral states (\'N\' if unknown).'
+                          ' This is used for masking, as sites that cannot be polarized are masked, and we mimic this in the simulted data.'
+                          ' Ignored in diploid mode which currently does not use ancestral state information'),
+                          default="None")
+parser_c.add_argument('--pMisPol', type=float, help='The fraction of sites that will be intentionally polarized to better approximate real data',
+                          default=0.0)
+parser_c.set_defaults(mode='fvecSim')
 parser_c._positionals.title = 'required arguments'
 
-parser_d = subparsers.add_parser('fvecVcfDiplo', help='fvecVcfDiplo mode help')
+parser_d = subparsers.add_parser('fvecVcf', help='Generate feature vectors from data in a VCF file')
+parser_d.add_argument('shicMode', help='specifies whether to use original haploid SHIC (use \'haploid\') or diploSHIC (\'diploid\')',
+                          default='diploid')
 parser_d.add_argument('chrArmVcfFile', help='VCF format file containing data for our chromosome arm (other arms will be ignored)')
 parser_d.add_argument('chrArm', help='Exact name of the chromosome arm for which feature vectors will be calculated')
 parser_d.add_argument('chrLen', type=int, help='Length of the chromosome arm')
@@ -52,58 +62,17 @@ parser_d.add_argument('--numSubWins', type=int, help='Number of sub-windows with
 parser_d.add_argument('--maskFileName', help=('Path to a fasta-formatted file that contains masking information (marked by \'N\'); '
                           'must have an entry with title matching chrArm'), default="None")
 parser_d.add_argument('--unmaskedFracCutoff', type=float, help='Fraction of unmasked sites required to retain a subwindow', default=0.25)
+parser_d.add_argument('--ancFileName', help=('Path to a fasta-formatted file that contains inferred ancestral states (\'N\' if unknown); '
+                          'must have an entry with title matching chrArm. Ignored for diploid mode which currently does not use ancestral '
+                          'state information.'), default="None")
 parser_d.add_argument('--statFileName', help='Path to a file where statistics will be written for each subwindow that is not filtered out',
                          default="None")
 parser_d.add_argument('--segmentStart', help='Left boundary of region in which feature vectors are calculated (whole arm if omitted)',
                          default="None")
 parser_d.add_argument('--segmentEnd', help='Right boundary of region in which feature vectors are calculated (whole arm if omitted)',
                          default="None")
-parser_d.set_defaults(mode='fvecVcfDiplo')
+parser_d.set_defaults(mode='fvecVcf')
 parser_d._positionals.title = 'required arguments'
-
-parser_e = subparsers.add_parser('fvecSimHaplo', help='fvecSimHaplo mode help')
-parser_e.add_argument('msOutFile', help='path to simulation output file (must be same format used by Hudson\'s ms)')
-parser_e.add_argument('fvecFileName', help='path to file where feature vectors will be written')
-parser_e.add_argument('--totalPhysLen', type=int, help='Length of simulated chromosome for converting infinite sites ms output to finite sites',
-                          default=1100000)
-parser_e.add_argument('--numSubWins', type=int, help='The number of subwindows that our chromosome will be divided into', default=11)
-parser_e.add_argument('--maskFileName', help=('Path to a fasta-formatted file that contains masking information (marked by \'N\'). '
-                          'If specified, simulations will be masked in a manner mirroring windows drawn from this file.'), default="None")
-parser_e.add_argument('--ancFileName', help=('Path to a fasta-formatted file that contains inferred ancestral states (\'N\' if unknown).'
-                          ' This is used for masking, as sites that cannot be polarized are masked, and we mimic this in the simulted data'),
-                          default="None")
-parser_e.add_argument('--chrArmsForMasking', help=('A comma-separated list (no spaces) of chromosome arms from which we want to draw masking '
-                          'information (or \'all\' if we want to use all arms. Ignored if maskFileName is not specified.'), default="all")
-parser_e.add_argument('--unmaskedFracCutoff', type=float, help='Minimum fraction of unmasked sites, if masking simulated data', default=0.25)
-parser_e.add_argument('--pMisPol', type=float, help='The fraction of sites that will be intentionally polarized to better approximate real data',
-                          default=0.0)
-parser_e.add_argument('--outStatsDir', help='Path to a directory where values of each statistic in each subwindow are recorded for each rep',
-                          default="None")
-parser_e.set_defaults(mode='fvecSimHaplo')
-parser_e._positionals.title = 'required arguments'
-
-parser_f = subparsers.add_parser('fvecVcfHaplo', help='fvecVcfHaplo mode help')
-parser_f.add_argument('chrArmVcfFile', help='VCF format file containing data for our chromosome arm (other arms will be ignored)')
-parser_f.add_argument('chrArm', help='Exact name of the chromosome arm for which feature vectors will be calculated')
-parser_f.add_argument('chrLen', type=int, help='Length of the chromosome arm')
-parser_f.add_argument('--targetPop', help='Population ID of samples we wish to include', default="None")
-parser_f.add_argument('--sampleToPopFileName', help=('Path to tab delimited file with population assignments; format: '
-                          'SampleID\tpopID'), default="None")
-parser_f.add_argument('--winSize', type=int, help='Length of the large window', default=1100000)
-parser_f.add_argument('--numSubWins', type=int, help='Number of sub-windows within each large window', default=11)
-parser_f.add_argument('--maskFileName', help=('Path to a fasta-formatted file that contains masking information (marked by \'N\'); '
-                          'must have an entry with title matching chrArm'), default="None")
-parser_f.add_argument('--unmaskedFracCutoff', type=float, help='Fraction of unmasked sites required to retain a subwindow', default=0.25)
-parser_f.add_argument('--ancFileName', help=('Path to a fasta-formatted file that contains inferred ancestral states (\'N\' if unknown); '
-                          'must have an entry with title matching chrArm'), default="None")
-parser_f.add_argument('--statFileName', help='Path to a file where statistics will be written for each subwindow that is not filtered out',
-                         default="None")
-parser_f.add_argument('--segmentStart', help='Left boundary of region in which feature vectors are calculated (whole arm if omitted)',
-                         default="None")
-parser_f.add_argument('--segmentEnd', help='Right boundary of region in which feature vectors are calculated (whole arm if omitted)',
-                         default="None")
-parser_f.set_defaults(mode='fvecVcfHaplo')
-parser_f._positionals.title = 'required arguments'
 
 if len(sys.argv)==1:
     parser.print_help()
@@ -309,33 +278,36 @@ elif argsDict['mode'] == 'predict':
         classDict[predictions[index]],preds[index][1],preds[index][3],preds[index][4],preds[index][2],preds[index][0]))
     outputFile.close
     print("{} predictions complete".format(index+1))
-elif argsDict['mode'] == 'fvecSimDiplo':
-    cmdArgs = [argsDict['msOutFile'], argsDict['totalPhysLen'], argsDict['numSubWins'], argsDict['maskFileName'], argsDict['chrArmsForMasking'],
-               argsDict['unmaskedFracCutoff'], argsDict['outStatsDir'], argsDict['fvecFileName']]
-    cmd = "python makeFeatureVecsForSingleMsDiploid.py " + " ".join([str(x) for x in cmdArgs])
+elif argsDict['mode'] == 'fvecSim':
+    if argsDict['shicMode'].lower() == 'diploid':
+        cmdArgs = [argsDict['msOutFile'], argsDict['totalPhysLen'], argsDict['numSubWins'], argsDict['maskFileName'],
+                   argsDict['chrArmsForMasking'], argsDict['unmaskedFracCutoff'], argsDict['outStatsDir'], argsDict['fvecFileName']]
+        cmd = "python makeFeatureVecsForSingleMsDiploid.py " + " ".join([str(x) for x in cmdArgs])
+    elif argsDict['shicMode'].lower() == 'haploid':
+        cmdArgs = [argsDict['msOutFile'], argsDict['totalPhysLen'], argsDict['numSubWins'], argsDict['maskFileName'], argsDict['ancFileName'],
+               argsDict['chrArmsForMasking'], argsDict['unmaskedFracCutoff'], argsDict['pMisPol'], argsDict['outStatsDir'],
+               argsDict['fvecFileName']]
+        cmd = "python makeFeatureVecsForSingleMs_ogSHIC.py " + " ".join([str(x) for x in cmdArgs])
+    else:
+        sys.exit("'shicMode' must be set to either 'diploid' or 'haploid'")
     print(cmd)
     subprocess.call(cmd.split())
-elif argsDict['mode'] == 'fvecVcfDiplo':
-    cmdArgs = [argsDict['chrArmVcfFile'], argsDict['chrArm'], argsDict['chrLen'], argsDict['targetPop'], argsDict['winSize'],
-               argsDict['numSubWins'], argsDict['maskFileName'], argsDict['unmaskedFracCutoff'], argsDict['sampleToPopFileName'],
-               argsDict['statFileName']]
-    if argsDict['segmentStart'] != "None":
-        cmdArgs += [argsDict['segmentStart'], argsDict['segmentEnd']]
-    cmd = "python makeFeatureVecsForChrArmFromVcfDiploid.py " + " ".join([str(x) for x in cmdArgs])
-    print(cmd)
-    subprocess.call(cmd.split())
-elif argsDict['mode'] == 'fvecSimHaplo':
-    cmdArgs = [argsDict['msOutFile'], argsDict['totalPhysLen'], argsDict['numSubWins'], argsDict['maskFileName'], argsDict['ancFileName'], 
-               argsDict['chrArmsForMasking'], argsDict['unmaskedFracCutoff'], argsDict['pMisPol'], argsDict['outStatsDir'], argsDict['fvecFileName']]
-    cmd = "python makeFeatureVecsForSingleMs_ogSHIC.py " + " ".join([str(x) for x in cmdArgs])
-    print(cmd)
-    subprocess.call(cmd.split())
-elif argsDict['mode'] == 'fvecVcfHaplo':
-    cmdArgs = [argsDict['chrArmVcfFile'], argsDict['chrArm'], argsDict['chrLen'], argsDict['targetPop'], argsDict['winSize'],
+elif argsDict['mode'] == 'fvecVcf':
+    if argsDict['shicMode'].lower() == 'diploid':
+        cmdArgs = [argsDict['chrArmVcfFile'], argsDict['chrArm'], argsDict['chrLen'], argsDict['targetPop'], argsDict['winSize'],
+                   argsDict['numSubWins'], argsDict['maskFileName'], argsDict['unmaskedFracCutoff'], argsDict['sampleToPopFileName'],
+                   argsDict['statFileName']]
+        cmd = "python makeFeatureVecsForChrArmFromVcfDiploid.py " + " ".join([str(x) for x in cmdArgs])
+    elif argsDict['shicMode'].lower() == 'haploid':
+        cmdArgs = [argsDict['chrArmVcfFile'], argsDict['chrArm'], argsDict['chrLen'], argsDict['targetPop'], argsDict['winSize'],
                argsDict['numSubWins'], argsDict['maskFileName'], argsDict['unmaskedFracCutoff'], argsDict['sampleToPopFileName'],
                argsDict['ancFileName'], argsDict['statFileName']]
+        cmd = "python makeFeatureVecsForChrArmFromVcf_ogSHIC.py " + " ".join([str(x) for x in cmdArgs])
+    else:
+        sys.exit("'shicMode' must be set to either 'diploid' or 'haploid'")
+    additionalArgs = []
     if argsDict['segmentStart'] != "None":
-        cmdArgs += [argsDict['segmentStart'], argsDict['segmentEnd']]
-    cmd = "python makeFeatureVecsForChrArmFromVcf_ogSHIC.py " + " ".join([str(x) for x in cmdArgs])
+        additionalArgs += [argsDict['segmentStart'], argsDict['segmentEnd']]
+        cmd += " " + " ".join(additionalArgs)
     print(cmd)
     subprocess.call(cmd.split())
