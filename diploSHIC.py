@@ -10,7 +10,8 @@ parser_a.add_argument('nDims', metavar='nDims', type=int,
 parser_a.add_argument('trainDir', help='path to training set files')
 parser_a.add_argument('testDir', help='path to test set files, can be same as trainDir')
 parser_a.add_argument('outputModel', help='file name for output model, will create two files one with structure one with weights')
-parser_a.add_argument('--epochs', type=int, help='max epochs for training CNN', default=100)
+parser_a.add_argument('--epochs', type=int, help='max epochs for training CNN (default = 100)', default=100)
+parser_a.add_argument('--numSubWins', type=int, help='number of subwindows that our chromosome is divided into (default = 11)', default=11)
 parser_a.set_defaults(mode='train')
 parser_a._positionals.title = 'required arguments'
 
@@ -21,6 +22,7 @@ parser_b.add_argument('modelStructure', help='path to CNN structure .json file')
 parser_b.add_argument('modelWeights', help='path to CNN weights .h5 file')
 parser_b.add_argument('predictFile', help='input file to predict')
 parser_b.add_argument('predictFileOutput', help='output file name')
+parser_b.add_argument('--numSubWins', type=int, help='number of subwindows that our chromosome is divided into (default = 11)', default=11)
 parser_b.set_defaults(mode='predict')
 parser_b._positionals.title = 'required arguments'
 
@@ -49,8 +51,7 @@ parser_c.set_defaults(mode='fvecSim')
 parser_c._positionals.title = 'required arguments'
 
 parser_d = subparsers.add_parser('fvecVcf', help='Generate feature vectors from data in a VCF file')
-parser_d.add_argument('shicMode', help='specifies whether to use original haploid SHIC (use \'haploid\') or diploSHIC (\'diploid\')',
-                          default='diploid')
+parser_d.add_argument('shicMode', help='specifies whether to use original haploid SHIC (use \'haploid\') or diploSHIC (\'diploid\')')
 parser_d.add_argument('chrArmVcfFile', help='VCF format file containing data for our chromosome arm (other arms will be ignored)')
 parser_d.add_argument('chrArm', help='Exact name of the chromosome arm for which feature vectors will be calculated')
 parser_d.add_argument('chrLen', type=int, help='Length of the chromosome arm')
@@ -100,6 +101,7 @@ if argsDict['mode'] in ['train', 'predict']:
     import fnmatch
 
     nDims = argsDict['nDims']
+    numSubWins = argsDict['numSubWins']
 
 if argsDict['mode'] == 'train':
     trainingDir=argsDict['trainDir']
@@ -109,23 +111,23 @@ if argsDict['mode'] == 'train':
     #nCores = 12
     print("loading data now...")
     #training data
-    finalCol = (11 * nDims)+1
+    finalCol = (numSubWins * nDims)+1
     hard = np.loadtxt(trainingDir+"hard.fvec",skiprows=1,usecols=list(range(1,finalCol)))
-    h1 = np.reshape(hard,(hard.shape[0],nDims,11))
+    h1 = np.reshape(hard,(hard.shape[0],nDims,numSubWins))
     neut = np.loadtxt(trainingDir+"neut.fvec",skiprows=1,usecols=list(range(1,finalCol)))
-    n1 = np.reshape(neut,(neut.shape[0],nDims,11))
+    n1 = np.reshape(neut,(neut.shape[0],nDims,numSubWins))
     soft = np.loadtxt(trainingDir+"soft.fvec",skiprows=1,usecols=list(range(1,finalCol)))
-    s1 = np.reshape(soft,(soft.shape[0],nDims,11))
+    s1 = np.reshape(soft,(soft.shape[0],nDims,numSubWins))
     lsoft = np.loadtxt(trainingDir+"linkedSoft.fvec",skiprows=1,usecols=list(range(1,finalCol)))
-    ls1 = np.reshape(lsoft,(lsoft.shape[0],nDims,11))
+    ls1 = np.reshape(lsoft,(lsoft.shape[0],nDims,numSubWins))
     lhard = np.loadtxt(trainingDir+"linkedHard.fvec",skiprows=1,usecols=list(range(1,finalCol)))
-    lh1 = np.reshape(lhard,(lhard.shape[0],nDims,11))
+    lh1 = np.reshape(lhard,(lhard.shape[0],nDims,numSubWins))
 
     both=np.concatenate((h1,n1,s1,ls1,lh1))
     y=np.concatenate((np.repeat(0,len(h1)),np.repeat(1,len(n1)), np.repeat(2,len(s1)), np.repeat(3,len(ls1)), np.repeat(4,len(lh1))))
 
     #reshape both to explicitly set depth image. need for theanno not sure with tensorflow
-    both = both.reshape(both.shape[0],nDims,11,1)
+    both = both.reshape(both.shape[0],nDims,numSubWins,1)
     if (trainingDir==testingDir):
         X_train, X_test, y_train, y_test = train_test_split(both, y, test_size=0.2)
     else:
@@ -133,18 +135,18 @@ if argsDict['mode'] == 'train':
         y_train = y
         #testing data
         hard = np.loadtxt(testingDir+"hard.fvec",skiprows=1,usecols=list(range(1,finalCol)))
-        h1 = np.reshape(hard,(hard.shape[0],nDims,11))
+        h1 = np.reshape(hard,(hard.shape[0],nDims,numSubWins))
         neut = np.loadtxt(testingDir+"neut.fvec",skiprows=1,usecols=list(range(1,finalCol)))
-        n1 = np.reshape(neut,(neut.shape[0],nDims,11))
+        n1 = np.reshape(neut,(neut.shape[0],nDims,numSubWins))
         soft = np.loadtxt(testingDir+"soft.fvec",skiprows=1,usecols=list(range(1,finalCol)))
-        s1 = np.reshape(soft,(soft.shape[0],nDims,11))
+        s1 = np.reshape(soft,(soft.shape[0],nDims,numSubWins))
         lsoft = np.loadtxt(testingDir+"linkedSoft.fvec",skiprows=1,usecols=list(range(1,finalCol)))
-        ls1 = np.reshape(lsoft,(lsoft.shape[0],nDims,11))
+        ls1 = np.reshape(lsoft,(lsoft.shape[0],nDims,numSubWins))
         lhard = np.loadtxt(testingDir+"linkedHard.fvec",skiprows=1,usecols=list(range(1,finalCol)))
-        lh1 = np.reshape(lhard,(lhard.shape[0],nDims,11))
+        lh1 = np.reshape(lhard,(lhard.shape[0],nDims,numSubWins))
 
         both2=np.concatenate((h1,n1,s1,ls1,lh1))
-        X_test = both2.reshape(both2.shape[0],nDims,11,1)
+        X_test = both2.reshape(both2.shape[0],nDims,numSubWins,1)
         y_test=np.concatenate((np.repeat(0,len(h1)),np.repeat(1,len(n1)), np.repeat(2,len(s1)), np.repeat(3,len(ls1)), np.repeat(4,len(lh1))))
 
 
@@ -244,9 +246,9 @@ elif argsDict['mode'] == 'predict':
     #import data from predictFile
     x_df=pd.read_table(argsDict['predictFile'])
     testX = x_df[list(x_df)[4:]].as_matrix()
-    np.reshape(testX,(testX.shape[0],nDims,11))
+    np.reshape(testX,(testX.shape[0],nDims,numSubWins))
     #add channels
-    testX = testX.reshape(testX.shape[0],nDims,11,1)
+    testX = testX.reshape(testX.shape[0],nDims,numSubWins,1)
     #set up generator for normalization 
     validation_gen = ImageDataGenerator(
         featurewise_center=True,
