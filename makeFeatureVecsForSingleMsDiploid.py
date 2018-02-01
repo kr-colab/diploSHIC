@@ -6,16 +6,11 @@ from msTools import *
 from fvTools import *
 import time
 
-'''usage example
-python makeFeatureVecsForSingleMsDiploid.py /san/data/dan/simulations/discoal_multipopStuff/spatialSVMSims/trainingSets/equilibNeut.msout.gz 110000 11 /san/data/ag1kg/accessibility/Anopheles-gambiae-PEST_CHROMOSOMES_AgamP3.accessible.fa /san/data/ag1kg/outgroups/anc.meru_mela.fa 2L,2R,3L,3R 0.25 0.01 trainingSetsStats/ trainingSetsFeatureVecs/equilibNeut.msout.gz.fvec
-'''
-
-trainingDataFileName, totalPhysLen, numSubWins, maskFileName, ancFileName, chrArmsForMasking, unmaskedFracCutoff, outStatsDir, fvecFileName = sys.argv[1:]
+trainingDataFileName, totalPhysLen, numSubWins, maskFileName, chrArmsForMasking, unmaskedFracCutoff, outStatsDir, fvecFileName = sys.argv[1:]
 totalPhysLen = int(totalPhysLen)
 numSubWins = int(numSubWins)
 subWinLen = totalPhysLen//numSubWins
 assert totalPhysLen % numSubWins == 0 and numSubWins > 1
-chrArmsForMasking = chrArmsForMasking.split(",")
 
 sys.stderr.write("file name='%s'" %(trainingDataFileName))
 
@@ -24,6 +19,7 @@ if maskFileName.lower() in ["none", "false"]:
     maskFileName = False
     unmaskedFracCutoff = 1.0
 else:
+    chrArmsForMasking = chrArmsForMasking.split(",")
     unmaskedFracCutoff = float(unmaskedFracCutoff)
     if unmaskedFracCutoff > 1.0:
         sys.exit("unmaskedFracCutoff must lie within [0, 1]. AAARRRRGGGGHHHHH!!!!\n")
@@ -51,10 +47,7 @@ if not maskFileName:
     unmasked = [True] * totalPhysLen
 else:
     drawWithReplacement = False
-    if ancFileName.lower() in ["none", "false"]:
-        maskData = readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMasking, shuffle=True, cutoff=unmaskedFracCutoff) 
-    else:
-        maskData = readMaskAndAncDataForTraining(maskFileName, ancFileName, totalPhysLen, subWinLen, chrArmsForMasking, shuffle=True, cutoff=unmaskedFracCutoff) 
+    maskData = readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMasking, shuffle=True, cutoff=unmaskedFracCutoff) 
     if len(maskData) < numInstances:
         sys.stderr.write("Warning: didn't get enough windows from masked data (needed %d; got %d); will draw with replacement!!\n" %(numInstances, len(maskData)))
         drawWithReplacement = True
@@ -130,10 +123,11 @@ for instanceIndex in range(numInstances):
     numInstancesDone += 1
 
 statFiles = []
-for subWinIndex in range(numSubWins):
-    statFileName = "%s/%s.%d.stats" %(outStatsDir, trainingDataFileName.split("/")[-1].rstrip(".gz"), subWinIndex)
-    statFiles.append(open(statFileName, "w"))
-    statFiles[-1].write("\t".join(statNames) + "\n")
+if outStatsDir.lower() != "none":
+    for subWinIndex in range(numSubWins):
+        statFileName = "%s/%s.%d.stats" %(outStatsDir, trainingDataFileName.split("/")[-1].rstrip(".gz"), subWinIndex)
+        statFiles.append(open(statFileName, "w"))
+        statFiles[-1].write("\t".join(statNames) + "\n")
 with open(fvecFileName, "w") as fvecFile:
     fvecFile.write(header + "\n")
     for i in range(numInstancesDone):
@@ -145,9 +139,13 @@ with open(fvecFileName, "w") as fvecFile:
             outVec += normalizeFeatureVec(statVals[statName][i])
             for subWinIndex in range(numSubWins):
                 statLines[subWinIndex].append(statVals[statName][i][subWinIndex])
-        for subWinIndex in range(numSubWins):
-            statFiles[subWinIndex].write("\t".join([str(x) for x in statLines[subWinIndex]]) + "\n")
+        if statFiles:
+            for subWinIndex in range(numSubWins):
+                statFiles[subWinIndex].write("\t".join([str(x) for x in statLines[subWinIndex]]) + "\n")
         fvecFile.write("\t".join([str(x) for x in outVec]) + "\n")
-for subWinIndex in range(numSubWins):
-    statFiles[subWinIndex].close()
+
+if statFiles:
+    for subWinIndex in range(numSubWins):
+        statFiles[subWinIndex].close()
+
 sys.stderr.write("total time spent calculating summary statistics and generating feature vectors: %f secs\n" %(time.clock()-start))

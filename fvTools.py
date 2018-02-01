@@ -85,15 +85,21 @@ def standardize_by_allele_count_from_precomp_bins(score, dafs, standardizationIn
         score_standardized[loc] = (score[loc] - m) / s
     return score_standardized
 
-def readFaArm(armFileName):
+def readFaArm(armFileName, armName=False):
     with open(armFileName) as armFile:
         reading = False
         seq = ""
         for line in armFile:
             if line.startswith(">"):
-                assert not reading
-                reading = True
-            else:
+                if armName:
+                    if reading:
+                        break
+                    elif line.strip()[1:] == armName:
+                        reading = True
+                else:
+                    assert not reading
+                    reading = True
+            elif reading:
                 seq += line.strip()
     return seq
 
@@ -192,6 +198,8 @@ def readFa(faFileName, upper=False):
 def readMaskAndAncDataForTraining(maskFileName, ancFileName, totalPhysLen, subWinLen, chrArmsForMasking, shuffle=True, cutoff=0.25):
     isAccessible = []
     maskData, ancData = readFa(maskFileName, upper=True), readFa(ancFileName, upper=True)
+    if 'all' in chrArmsForMasking:
+        chrArmsForMasking = sorted(maskData)
     for currChr in chrArmsForMasking:
         assert len(maskData[currChr]) == len(ancData[currChr])
         isAccessibleSub = []
@@ -227,7 +235,7 @@ def readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMas
                     windowedAccessibility = getAccessibilityInWins(isAccessibleSub, totalPhysLen, subWinLen, cutoff)
                     if windowedAccessibility:
                         isAccessible += windowedAccessibility
-                if currChr in chrArmsForMasking:
+                if 'all' in chrArmsForMasking or currChr in chrArmsForMasking:
                     readingMasks = True
                 else:
                     readingMasks = False

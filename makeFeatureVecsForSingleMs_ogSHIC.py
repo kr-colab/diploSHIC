@@ -77,7 +77,7 @@ def getSnpIndicesInSubWins(subWinBounds, snpLocs):
     return snpIndicesInSubWins
 
 subWinBounds = getSubWinBounds(subWinLen, totalPhysLen)
-statNames = ["pi", "thetaW", "tajD", "thetaH", "fayWuH", "HapCount", "H1", "H12", "H2/H1", "ZnS", "Omega"]
+statNames = ["pi", "thetaW", "tajD", "thetaH", "fayWuH", "HapCount", "H1", "H12", "H2/H1", "ZnS", "Omega", "distVar", "distSkew", "distKurt"]
 header = []
 for statName in statNames:
     for i in range(numSubWins):
@@ -162,10 +162,11 @@ for instanceIndex in range(numInstances):
     numInstancesDone += 1
 
 statFiles = []
-for subWinIndex in range(numSubWins):
-    statFileName = "%s/%s.%d.stats" %(outStatsDir, trainingDataFileName.split("/")[-1].rstrip(".gz"), subWinIndex)
-    statFiles.append(open(statFileName, "w"))
-    statFiles[-1].write("\t".join(statNames) + "\n")
+if outStatsDir.lower() != "none":
+    for subWinIndex in range(numSubWins):
+        statFileName = "%s/%s.%d.stats" %(outStatsDir, trainingDataFileName.split("/")[-1].rstrip(".gz"), subWinIndex)
+        statFiles.append(open(statFileName, "w"))
+        statFiles[-1].write("\t".join(statNames) + "\n")
 with open(fvecFileName, "w") as fvecFile:
     fvecFile.write(header + "\n")
     for i in range(numInstancesDone):
@@ -178,9 +179,13 @@ with open(fvecFileName, "w") as fvecFile:
             outVec += normalizeFeatureVec(statVals[statName][i])
             for subWinIndex in range(numSubWins):
                 statLines[subWinIndex].append(statVals[statName][i][subWinIndex])
-        for subWinIndex in range(numSubWins):
-            statFiles[subWinIndex].write("\t".join([str(x) for x in statLines[subWinIndex]]) + "\n")
+        if statFiles:
+            for subWinIndex in range(numSubWins):
+                statFiles[subWinIndex].write("\t".join([str(x) for x in statLines[subWinIndex]]) + "\n")
         fvecFile.write("\t".join([str(x) for x in outVec]) + "\n")
-for subWinIndex in range(numSubWins):
-    statFiles[subWinIndex].close()
+
+if statFiles:
+    for subWinIndex in range(numSubWins):
+        statFiles[subWinIndex].close()
+
 sys.stderr.write("total time spent calculating summary statistics and generating feature vectors: %f secs\n" %(time.clock()-start))

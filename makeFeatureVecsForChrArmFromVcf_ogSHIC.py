@@ -6,13 +6,13 @@ import sys
 import time
 from fvTools import *
 
-if not len(sys.argv) in [11,13]:
-    sys.exit("usage:\npython makeFeatureVecsForChrArmFromVcfDiploid.py chrArmFileName chrArm chrLen targetPop winSize numSubWins maskFileName unmaskedFracCutoff sampleToPopFileName statFileName [segmentStart segmentEnd]\n")
-if len(sys.argv) == 13:
-    chrArmFileName, chrArm, chrLen, targetPop, winSize, numSubWins, maskFileName, unmaskedFracCutoff, sampleToPopFileName, statFileName, segmentStart, segmentEnd = sys.argv[1:]
+if not len(sys.argv) in [12,14]:
+    sys.exit("usage:\npython makeFeatureVecsForChrArm.py chrArmFileName chrArm chrLen targetPop winSize numSubWins maskFileName sampleToPopFileName ancestralArmFaFileName statFileName [segmentStart segmentEnd]\n")
+if len(sys.argv) == 14:
+    chrArmFileName, chrArm, chrLen, targetPop, winSize, numSubWins, maskFileName, unmaskedFracCutoff, sampleToPopFileName, ancestralArmFaFileName, statFileName, segmentStart, segmentEnd = sys.argv[1:]
     segmentStart, segmentEnd = int(segmentStart), int(segmentEnd)
 else:
-    chrArmFileName, chrArm, chrLen, targetPop, winSize, numSubWins, maskFileName, unmaskedFracCutoff, sampleToPopFileName, statFileName = sys.argv[1:]
+    chrArmFileName, chrArm, chrLen, targetPop, winSize, numSubWins, maskFileName, unmaskedFracCutoff, sampleToPopFileName, ancestralArmFaFileName, statFileName = sys.argv[1:]
     segmentStart = None
 
 unmaskedFracCutoff = float(unmaskedFracCutoff)
@@ -75,6 +75,7 @@ if not sampleToPopFileName.lower() in ["none", "false"]:
     sampleIndicesToKeep = [i for i in range(len(samples)) if sampleToPop.get(samples[i], "popNotFound!") == targetPop]
 else:
     sampleIndicesToKeep = [i for i in range(len(samples))]
+
 rawgenos = np.take(chrArmFile["calldata/GT"], [i for i in range(len(chroms)) if chroms[i] == chrArm], axis=0)
 genos = allel.GenotypeArray(rawgenos)
 refAlleles = np.extract(chroms == chrArm, chrArmFile['variants/REF'])
@@ -88,7 +89,14 @@ if segmentStart != None:
 genos = allel.GenotypeArray(genos.subset(sel1=sampleIndicesToKeep))
 alleleCounts = genos.count_alleles()
 
-#remove all but mono/biallelic unmasked sites
+#remove all but mono/biallelic unmasked sites that could be polarized
+ancArm = readFaArm(ancestralArmFaFileName, chrArm).upper()
+sys.stderr.write("polarizing snps\n")
+startTime = time.clock()
+#NOTE: mapping specifies which alleles to swap counts for based on polarization; leaves unpolarized snps alone
+#NOTE: those snps need to be filtered later on (as done below)!
+mapping, unmasked = polarizeSnps(unmasked, positions, refAlleles, altAlleles, ancArm)
+sys.stderr.write("took %s seconds\n" %(time.clock()-startTime))
 isBiallelic = alleleCounts.is_biallelic()
 for i in range(len(isBiallelic)):
     if not isBiallelic[i]:
@@ -97,10 +105,14 @@ snpIndicesToKeep = [i for i in range(len(positions)) if unmasked[positions[i]-1]
 genos = allel.GenotypeArray(genos.subset(sel0=snpIndicesToKeep))
 positions = [positions[i] for i in snpIndicesToKeep]
 alleleCounts = allel.AlleleCountsArray([alleleCounts[i] for i in snpIndicesToKeep])
+mapping = [mapping[i] for i in snpIndicesToKeep]
+alleleCounts = alleleCounts.map_alleles(mapping)
+haps = genos.to_haplotypes()
 
-statNames = ["pi", "thetaW", "tajD", "distVar","distSkew","distKurt","nDiplos","diplo_H1","diplo_H12","diplo_H2/H1","diplo_ZnS","diplo_Omega"]
+statNames = ["pi", "thetaW", "tajD", "thetaH", "fayWuH", "HapCount", "H1", "H12", "H2/H1", "ZnS", "Omega", "distVar", "distSkew", "distKurt"]
 
 subWinBounds = getSubWinBounds(chrLen, subWinSize)
+precomputedStats = {} #not using this
 
 header = "chrom classifiedWinStart classifiedWinEnd bigWinRange".split()
 statHeader = "chrom start end".split()
@@ -130,10 +142,13 @@ for subWinStart in range(1, lastSubWinStart+1, subWinSize):
     if segmentStart == None or subWinStart >= segmentStart and subWinEnd <= segmentEnd:
         sys.stderr.write("%d-%d num unmasked snps: %d; unmasked frac: %f\n" %(subWinStart, subWinEnd, len(snpIndicesInSubWins[subWinIndex]), unmaskedFrac))
     if len(snpIndicesInSubWins[subWinIndex]) > 0 and unmaskedFrac >= unmaskedFracCutoff:
-        genosInSubWin = allel.GenotypeArray(genos.subset(sel0=snpIndicesInSubWins[subWinIndex]))
+        hapsInSubWin = allel.HaplotypeArray(haps.subset(sel0=snpIndicesInSubWins[subWinIndex]))
         statValStr = []
         for statName in statNames:
-            calcAndAppendStatValForScanDiplo(alleleCounts, positions, statName, subWinStart, subWinEnd, statVals, subWinIndex, genosInSubWin, unmasked)
+            calcAndAppendStatValForScan(alleleCounts, positions, statName, subWinStart, \
+                 subWinEnd, statVals, subWinIndex, hapsInSubWin, unmasked, precomputedStats)
+            statValStr.append("%s: %s" %(statName, statVals[statName][-1]))
+        sys.stderr.write("\t".join(statValStr) + "\n")
         goodSubWins.append(True)
         if statFileName:
             statFile.write("\t".join([chrArm, str(subWinStart), str(subWinEnd)] + [str(statVals[statName][-1]) for statName in statNames]) + "\n")
