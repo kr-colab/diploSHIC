@@ -55,6 +55,7 @@ parser_d.add_argument('shicMode', help='specifies whether to use original haploi
 parser_d.add_argument('chrArmVcfFile', help='VCF format file containing data for our chromosome arm (other arms will be ignored)')
 parser_d.add_argument('chrArm', help='Exact name of the chromosome arm for which feature vectors will be calculated')
 parser_d.add_argument('chrLen', type=int, help='Length of the chromosome arm')
+parser_d.add_argument('fvecFileName', help='path to file where feature vectors will be written')
 parser_d.add_argument('--targetPop', help='Population ID of samples we wish to include', default="None")
 parser_d.add_argument('--sampleToPopFileName', help=('Path to tab delimited file with population assignments; format: '
                           'SampleID\tpopID'), default="None")
@@ -311,5 +312,5 @@ elif argsDict['mode'] == 'fvecVcf':
     if argsDict['segmentStart'] != "None":
         additionalArgs += [argsDict['segmentStart'], argsDict['segmentEnd']]
         cmd += " " + " ".join(additionalArgs)
-    print(cmd)
+    print(cmd + " > " + argsDict['fvecFileName'])
     subprocess.call(cmd.split())
