@@ -31,9 +31,9 @@ parser_c.add_argument('shicMode', help='specifies whether to use original haploi
                           default='diploid')
 parser_c.add_argument('msOutFile', help='path to simulation output file (must be same format used by Hudson\'s ms)')
 parser_c.add_argument('fvecFileName', help='path to file where feature vectors will be written')
-parser_c.add_argument('--totalPhysLen', type=int, help='Length of simulated chromosome for converting infinite sites ms output to finite sites',
+parser_c.add_argument('--totalPhysLen', type=int, help='Length of simulated chromosome for converting infinite sites ms output to finite sites (default=1100000)',
                           default=1100000)
-parser_c.add_argument('--numSubWins', type=int, help='The number of subwindows that our chromosome will be divided into', default=11)
+parser_c.add_argument('--numSubWins', type=int, help='The number of subwindows that our chromosome will be divided into (default=11)', default=11)
 parser_c.add_argument('--maskFileName', help=('Path to a fasta-formatted file that contains masking information (marked by \'N\'). '
                           'If specified, simulations will be masked in a manner mirroring windows drawn from this file.'), default="None")
 parser_c.add_argument('--chrArmsForMasking', help=('A comma-separated list (no spaces) of chromosome arms from which we want to draw masking '
@@ -58,8 +58,8 @@ parser_d.add_argument('chrLen', type=int, help='Length of the chromosome arm')
 parser_d.add_argument('--targetPop', help='Population ID of samples we wish to include', default="None")
 parser_d.add_argument('--sampleToPopFileName', help=('Path to tab delimited file with population assignments; format: '
                           'SampleID\tpopID'), default="None")
-parser_d.add_argument('--winSize', type=int, help='Length of the large window', default=1100000)
-parser_d.add_argument('--numSubWins', type=int, help='Number of sub-windows within each large window', default=11)
+parser_d.add_argument('--winSize', type=int, help='Length of the large window (default=1100000)', default=1100000)
+parser_d.add_argument('--numSubWins', type=int, help='Number of sub-windows within each large window (default=11)', default=11)
 parser_d.add_argument('--maskFileName', help=('Path to a fasta-formatted file that contains masking information (marked by \'N\'); '
                           'must have an entry with title matching chrArm'), default="None")
 parser_d.add_argument('--unmaskedFracCutoff', type=float, help='Fraction of unmasked sites required to retain a subwindow', default=0.25)
