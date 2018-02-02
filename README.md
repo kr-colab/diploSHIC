@@ -78,7 +78,7 @@ The first task in our pipeline is generating feature vectors from simulation dat
 use with the CNN that we will train and then use for prediction. The `diploSHIC.py` script eases this 
 process with two run modes
 
-### fvecSim mode
+#### fvecSim mode
 The fvecSim run mode is used for turning ms-style output into feature vectors compatible with `diploSHIC.py`. The
 help message from this mode looks like this
 ```
@@ -101,12 +101,12 @@ required arguments:
 
 optional arguments:
   -h, --help            show this help message and exit
-  --totalPhysLen TOTALPHYSLEN
+   --totalPhysLen TOTALPHYSLEN
                         Length of simulated chromosome for converting infinite
-                        sites ms output to finite sites
+                        sites ms output to finite sites (default=1100000)
   --numSubWins NUMSUBWINS
                         The number of subwindows that our chromosome will be
-                        divided into
+                        divided into (default=11)
   --maskFileName MASKFILENAME
                         Path to a fasta-formatted file that contains masking
                         information (marked by 'N'). If specified, simulations
@@ -135,7 +135,72 @@ optional arguments:
 ```
 This mode takes three arguments and then offers many options. The arguments are the "shicMode", i.e. whether
 to calculate the haploid or diploid summary statistics, the name of the input file, and the name of the output file. 
-The various options
+The various options allow one to account for missing data (via masking), unfolding the site frequency spectrum via the ancestral
+states file (haploid only), and a mis-polarization rate of that unfolded site frequency spectrum. Please see the example usage below
+for a fleshed out example of how to use these features.
+
+#### fvecVcf mode
+The fvecVcf mode is used for calculating feature vectors from data that is stored as a VCF file. 
+The help message from this mode is as follows
+```
+$ python diploSHIC.py fvecVcf -h
+usage: diploSHIC.py fvecVcf [-h] [--targetPop TARGETPOP]
+                            [--sampleToPopFileName SAMPLETOPOPFILENAME]
+                            [--winSize WINSIZE] [--numSubWins NUMSUBWINS]
+                            [--maskFileName MASKFILENAME]
+                            [--unmaskedFracCutoff UNMASKEDFRACCUTOFF]
+                            [--ancFileName ANCFILENAME]
+                            [--statFileName STATFILENAME]
+                            [--segmentStart SEGMENTSTART]
+                            [--segmentEnd SEGMENTEND]
+                            shicMode chrArmVcfFile chrArm chrLen
+
+required arguments:
+  shicMode              specifies whether to use original haploid SHIC (use
+                        'haploid') or diploSHIC ('diploid')
+  chrArmVcfFile         VCF format file containing data for our chromosome arm
+                        (other arms will be ignored)
+  chrArm                Exact name of the chromosome arm for which feature
+                        vectors will be calculated
+  chrLen                Length of the chromosome arm
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --targetPop TARGETPOP
+                        Population ID of samples we wish to include
+  --sampleToPopFileName SAMPLETOPOPFILENAME
+                        Path to tab delimited file with population
+                        assignments; format: SampleID popID
+  --winSize WINSIZE     Length of the large window (default=1100000)
+  --numSubWins NUMSUBWINS
+                        Number of sub-windows within each large window
+                        (default=11)
+  --maskFileName MASKFILENAME
+                        Path to a fasta-formatted file that contains masking
+                        information (marked by 'N'); must have an entry with
+                        title matching chrArm
+  --unmaskedFracCutoff UNMASKEDFRACCUTOFF
+                        Fraction of unmasked sites required to retain a
+                        subwindow
+  --ancFileName ANCFILENAME
+                        Path to a fasta-formatted file that contains inferred
+                        ancestral states ('N' if unknown); must have an entry
+                        with title matching chrArm. Ignored for diploid mode
+                        which currently does not use ancestral state
+                        information.
+  --statFileName STATFILENAME
+                        Path to a file where statistics will be written for
+                        each subwindow that is not filtered out
+  --segmentStart SEGMENTSTART
+                        Left boundary of region in which feature vectors are
+                        calculated (whole arm if omitted)
+  --segmentEnd SEGMENTEND
+                        Right boundary of region in which feature vectors are
+                        calculated (whole arm if omitted)
+```
+This mode takes four arguments and again has many options. The required arguments are the "shicMode", i.e. whether
+to calculate the haploid or diploid summary statistics, the name of the input file, which chromosome to arm to calculate
+statistics for, and the length of that chromosome.
 
 ### train mode
 Individual run mode help menus can be brought up in a similar way. For instance here is the help
