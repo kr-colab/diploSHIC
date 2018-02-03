@@ -90,7 +90,7 @@ def readFaArm(armFileName, armName=False):
         fopen = gzip.open
     else:
         fopen = open
-    with fopen(armFileName) as armFile:
+    with fopen(armFileName,'rt') as armFile:
         reading = False
         seq = ""
         for line in armFile:
@@ -182,7 +182,7 @@ def readFa(faFileName, upper=False):
         fopen = gzip.open
     else:
         fopen = open
-    with open(faFileName) as faFile:
+    with fopen(faFileName,'rt') as faFile:
         reading = False
         for line in faFile:
             if line.startswith(">"):
@@ -235,7 +235,7 @@ def readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMas
         fopen = gzip.open
     else:
         fopen = open
-    with fopen(maskFileName,mode='r') as maskFile:
+    with fopen(maskFileName,'rt') as maskFile:
         for line in maskFile:
             if line.startswith(">"):
                 currChr = line[1:].strip()
@@ -276,7 +276,7 @@ def readMaskDataForScan(maskFileName, chrArm):
         fopen = gzip.open
     else:
         fopen = open
-    with fopen(maskFileName) as maskFile:
+    with fopen(maskFileName,'rt') as maskFile:
         for line in maskFile:
             if line.startswith(">"):
                 currChr = line[1:].strip()
