@@ -287,4 +287,4 @@ that we will use as input
 ```
 $ python diploSHIC.py predict 12 fooModel.json fooModel.weights.hdf5 testEmpirical.fvec testEmpirical.preds
 ```
-
+the output predictions will be saved in `testEmpirical.preds` and should be straightforward to interpret.
