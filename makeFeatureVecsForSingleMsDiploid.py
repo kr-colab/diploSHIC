@@ -73,7 +73,6 @@ for statName in statNames:
         header.append("%s_win%d" %(statName, i))
 header = "\t".join(header)
 
-#trainingDataFileObj, sampleSize, numInstances = openMsOutFileForSequentialReading(trainingDataFileName)
 
 statVals = {}
 for statName in statNames:
