@@ -283,6 +283,11 @@ Not bad. In practice I would set the `--epochs` value much higher than 10- the d
 Now that we have a trained model we can make predictions on some empirical data. In the repo there is a file called `testEmpirical.fvec`
 that we will use as input
 ```
-$ python diploSHIC.py predict 12 fooModel.json fooModel.weights.hdf5 testEmpirical.fvec testEmpirical.preds
+$ python diploSHIC.py predict fooModel.json fooModel.weights.hdf5 testEmpirical.fvec testEmpirical.preds
 ```
 the output predictions will be saved in `testEmpirical.preds` and should be straightforward to interpret.
+
+### A complete test case
+In the interest of showing the user the whole enchilada when it comes to the workflow, I've provided the user
+with a more detailed example on the wiki of this repo. That example can be found here: https://github.com/kern-lab/diploSHIC/wiki/A-soup-to-nuts-example
+
