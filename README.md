@@ -163,6 +163,7 @@ required arguments:
   chrArm                Exact name of the chromosome arm for which feature
                         vectors will be calculated
   chrLen                Length of the chromosome arm
+  fvecFileName          path to file where feature vectors will be written
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -198,13 +199,15 @@ optional arguments:
                         Right boundary of region in which feature vectors are
                         calculated (whole arm if omitted)
 ```
-This mode takes four arguments and again has many options. The required arguments are the "shicMode", i.e. whether
+This mode takes five arguments and again has many options. The required arguments are the "shicMode", i.e. whether
 to calculate the haploid or diploid summary statistics, the name of the input file, which chromosome to arm to calculate
-statistics for, and the length of that chromosome.
+statistics for, the length of that chromosome, and the name of the output file.
 
-### train mode
-Individual run mode help menus can be brought up in a similar way. For instance here is the help
-for the train mode
+### training the CNN and prediction
+Once we have feature vector files ready to go we can train and test our CNN and then finally do prediction on empirical data.
+
+#### train mode
+Here is the help message for the train mode of `diploSHIC.py`
 ```
 $ python diploSHIC.py train -h
 usage: diploSHIC.py train [-h] [--epochs EPOCHS] [--numSubWins NUMSUBWINS]
@@ -225,7 +228,7 @@ optional arguments:
                         into (default = 11)
 ```
 As you will see in a moment train mode is used for training the deep learning classifier. Its required
-arguments are nDims (12 for diploid, 11 for haploid) , trainDir (the directory where the training feature vectors
+arguments are nDims (12 for diploid, 11 for haploid if you used the scripts above) , trainDir (the directory where the training feature vectors
 are kept), testDir (the directory where the testing feature vectors are kept), and outputModel the file name for the trained
 network. One note -- `diploSHIC.py` expects five files named `hard.fvec`, `soft.fvec`, `neut.fvec`, `linkedSoft.fvec`, and 
 `linkedHard.fvec` in the training and testing directories. The training and testing directory can be the same directory in 
