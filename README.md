@@ -14,6 +14,7 @@ such as `conda` or `pip`. The complete list of dependencies looks like this:
 
 - numpy
 - scipy
+- pandas
 - scikit-allel
 - scikit-learn
 - tensorflow
@@ -262,4 +263,28 @@ optional arguments:
 The predict mode takes as input nDims (as above), the two model files output by the train mode, an input file of empirical feature 
 vectors, and a file name for the prediction output. 
 
+#### a quick example of the train/predict cycle
+We have supplied in the repo some example data that can give you a quick run through the train/predict cycle (we will also
+shortly provide a soup-to-nuts example that starts by calculating feature vectors from simulations and ends with prediction of 
+genomic data). Let's quickly give that code a spin. The directories `testing/` and `training/` each contain appropriately
+formatted diploid feature vectors that are ready to be fed into diploSHIC. First we will train the diploSHIC CNN, but we will
+restrict the number of training epochs to 10 to keep things relatively brief (this runs in less than 5 minutes on our server). 
+```
+$ python diploSHIC.py train 12 training/ testing/ fooModel --epochs 10
+```
+as it runs a bunch of information monitoring the training of the network will apear. We are tracking the loss and accuracy in the
+validation set. When optimization is complete our trained network will be contained in two files, `fooModel.json` and 
+`fooModel.weights.hdf5`. The last bit of output from `diploSHIC.py` gives us information about the loss and accuracy on
+the held out test data. From the above run my looks like this:
+```
+evaluation on test set:
+diploSHIC loss: 0.404791
+diploSHIC accuracy: 0.846800
+```
+Not bad. In practice I would set the `--epochs` value much higher than 10- the default setting of 100 should suffice in most cases.
+Now that we have a trained model we can make predictions on some empirical data. In the repo there is a file called `testEmpirical.fvec`
+that we will use as input
+```
+$ python diploSHIC.py predict 12 fooModel.json fooModel.weights.hdf5 testEmpirical.fvec testEmpirical.preds
+```
 
