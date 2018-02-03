@@ -123,3 +123,62 @@ def msOutToHaplotypeArrayIn(msOutputFileName, totalPhysLen):
     if isFile:
         msStream.close()
     return hapArraysIn, positionArrays
+
+def openMsOutFileForSequentialReading(msOutputFileName):
+    if msOutputFileName == "stdin":
+        isFile = False
+        msStream = sys.stdin
+    else:
+        isFile = True
+        if msOutputFileName.endswith(".gz"):
+            msStream = gzip.open(msOutputFileName,'rt')
+        else:
+            msStream = open(msOutputFileName)
+
+    header = msStream.readline()
+    program,numSamples,numSims = header.strip().split()[:3]
+    numSamples,numSims = int(numSamples),int(numSims)
+
+    return (msStream, isFile), numSamples, numSims
+
+def closeMsOutFile(fileInfoTuple):
+    msStream, isFile = fileInfoTuple
+    if isFile:
+        msStream.close()
+
+def readNextMsRepToHaplotypeArrayIn(fileInfoTuple, numSamples, totalPhysLen):
+    msStream, isFile = fileInfoTuple
+
+    #advance to next simulation
+    line = msStream.readline()
+    while not line.strip().startswith("//"):
+        line = msStream.readline()
+
+    segsitesBlah,segsites = msStream.readline().strip().split()
+    segsites = int(segsites)
+    if segsitesBlah != "segsites:":
+        sys.exit("Malformed ms-style output file. AAAARRRRGGHHH!!!!!\n")
+    if segsites == 0:
+        positions = []
+        hapArrayIn = []
+        for i in range(numSamples):
+            hapArrayIn.append([])
+    else:
+        positionsLine = msStream.readline().strip().split()
+        if not positionsLine[0] == "positions:":
+            sys.exit("Malformed ms-style output file. AAAARRRRGGHHH!!!!!\n")
+        positions = [float(x) for x in positionsLine[1:]]
+
+        samples = []
+        for i in range(numSamples):
+            sampleLine = msStream.readline().strip()
+            if len(sampleLine) != segsites:
+                sys.exit("Malformed ms-style output file %s segsites but %s columns in line: %s; line %s of %s samples AAAARRRRGGHHH!!!!!\n" %(segsites,len(sampleLine),sampleLine,i,numSamples))
+            samples.append(sampleLine)
+        if len(samples) != numSamples:
+            raise Exception
+        hapArrayIn, positions = msRepToHaplotypeArrayIn(samples, positions, totalPhysLen)
+
+    line = msStream.readline()
+
+    return hapArrayIn, positions

@@ -46,10 +46,6 @@ def getSubWinBounds(subWinLen, totalPhysLen): # get inclusive subwin bounds
     subWinBounds.append((subWinStart, subWinEnd))
     return subWinBounds
 
-# read in the ms style output
-hapArraysIn, positionArrays = msOutToHaplotypeArrayIn(trainingDataFileName, totalPhysLen)
-numInstances = len(hapArraysIn)
-
 if not maskFileName:
     unmasked = [True] * totalPhysLen
 else:
@@ -84,14 +80,18 @@ for statName in statNames:
         header.append("%s_win%d" %(statName, i))
 header = "\t".join(header)
 
+trainingDataFileObj, sampleSize, numInstances = openMsOutFileForSequentialReading(trainingDataFileName)
+
 statVals = {}
 for statName in statNames:
     statVals[statName] = []
 start = time.clock()
 numInstancesDone = 0
 for instanceIndex in range(numInstances):
-    snpIndicesInSubWins = getSnpIndicesInSubWins(subWinBounds, positionArrays[instanceIndex])
-    haps = allel.HaplotypeArray(hapArraysIn[instanceIndex], dtype='i1')
+    hapArrayIn, positionArray = readNextMsRepToHaplotypeArrayIn(trainingDataFileObj, sampleSize, totalPhysLen)
+
+    snpIndicesInSubWins = getSnpIndicesInSubWins(subWinBounds, positionArray)
+    haps = allel.HaplotypeArray(hapArrayIn, dtype='i1')
     if maskFileName:
         if drawWithReplacement:
             unmasked = random.choice(maskData)
@@ -99,7 +99,7 @@ for instanceIndex in range(numInstances):
             unmasked = maskData[instanceIndex]
         assert len(unmasked) == totalPhysLen
     genos = haps.to_genotypes(ploidy=2)
-    unmaskedSnpIndices = [i for i in range(len(positionArrays[instanceIndex])) if unmasked[positionArrays[instanceIndex][i]-1]]
+    unmaskedSnpIndices = [i for i in range(len(positionArray)) if unmasked[positionArray[i]-1]]
     if len(unmaskedSnpIndices) == 0:
         for statName in statNames:
             statVals[statName].append([])
@@ -107,11 +107,11 @@ for instanceIndex in range(numInstances):
             for statName in statNames:
                 appendStatValsForMonomorphic(statName, statVals, instanceIndex, subWinIndex)
     else:
-        positionArrayUnmaskedOnly = [positionArrays[instanceIndex][i] for i in unmaskedSnpIndices]
+        positionArrayUnmaskedOnly = [positionArray[i] for i in unmaskedSnpIndices]
         ac = genos.count_alleles()
         alleleCountsUnmaskedOnly = allel.AlleleCountsArray(np.array([ac[i] for i in unmaskedSnpIndices]))
         sampleSizes = [sum(x) for x in alleleCountsUnmaskedOnly]
-        assert len(set(sampleSizes)) == 1
+        assert len(set(sampleSizes)) == 1 and sampleSizes[0] == sampleSize
         if pMisPol > 0:
             alleleCountsUnmaskedOnly = misPolarizeAlleleCounts(alleleCountsUnmaskedOnly, pMisPol)
         dafs = alleleCountsUnmaskedOnly[:,1]/float(sampleSizes[0])
@@ -149,7 +149,7 @@ for instanceIndex in range(numInstances):
             subWinStart, subWinEnd = subWinBounds[subWinIndex]
             unmaskedFrac = unmasked[subWinStart-1:subWinEnd].count(True)/float(subWinLen)
             assert unmaskedFrac >= unmaskedFracCutoff
-            snpIndicesInSubWinUnmasked = [x for x in snpIndicesInSubWins[subWinIndex] if unmasked[positionArrays[instanceIndex][x]-1]]
+            snpIndicesInSubWinUnmasked = [x for x in snpIndicesInSubWins[subWinIndex] if unmasked[positionArray[x]-1]]
             if len(snpIndicesInSubWinUnmasked) > 0:
                 hapsInSubWin = haps.subset(sel0=snpIndicesInSubWinUnmasked)
                 genosInSubWin = genos.subset(sel0=snpIndicesInSubWinUnmasked)
@@ -160,6 +160,9 @@ for instanceIndex in range(numInstances):
                 for statName in statNames:
                     appendStatValsForMonomorphic(statName, statVals, instanceIndex, subWinIndex)
     numInstancesDone += 1
+
+if numInstancesDone != numInstances:
+    sys.exit("Expected %d reps but only processed %d. Perhaps we are using malformed simulation output!\n" %(numInstancesDone, numInstances))
 
 statFiles = []
 if outStatsDir.lower() != "none":
@@ -189,3 +192,4 @@ if statFiles:
         statFiles[subWinIndex].close()
 
 sys.stderr.write("total time spent calculating summary statistics and generating feature vectors: %f secs\n" %(time.clock()-start))
+closeMsOutFile(trainingDataFileObj)
