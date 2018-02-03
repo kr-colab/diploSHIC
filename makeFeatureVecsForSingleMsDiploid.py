@@ -14,6 +14,8 @@ assert totalPhysLen % numSubWins == 0 and numSubWins > 1
 
 sys.stderr.write("file name='%s'" %(trainingDataFileName))
 
+trainingDataFileObj, sampleSize, numInstances = openMsOutFileForSequentialReading(trainingDataFileName)
+
 if maskFileName.lower() in ["none", "false"]:
     sys.stderr.write("maskFileName='%s': not doing any masking!\n" %(maskFileName))
     maskFileName = False
@@ -71,7 +73,7 @@ for statName in statNames:
         header.append("%s_win%d" %(statName, i))
 header = "\t".join(header)
 
-trainingDataFileObj, sampleSize, numInstances = openMsOutFileForSequentialReading(trainingDataFileName)
+#trainingDataFileObj, sampleSize, numInstances = openMsOutFileForSequentialReading(trainingDataFileName)
 
 statVals = {}
 for statName in statNames:
