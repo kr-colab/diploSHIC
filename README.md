@@ -212,10 +212,9 @@ Here is the help message for the train mode of `diploSHIC.py`
 ```
 $ python diploSHIC.py train -h
 usage: diploSHIC.py train [-h] [--epochs EPOCHS] [--numSubWins NUMSUBWINS]
-                          nDims trainDir testDir outputModel
+                          trainDir testDir outputModel
 
 required arguments:
-  nDims                 dimensionality of the feature vector
   trainDir              path to training set files
   testDir               path to test set files, can be same as trainDir
   outputModel           file name for output model, will create two files one
@@ -229,7 +228,7 @@ optional arguments:
                         into (default = 11)
 ```
 As you will see in a moment train mode is used for training the deep learning classifier. Its required
-arguments are nDims (12 for diploid, 11 for haploid if you used the scripts above) , trainDir (the directory where the training feature vectors
+arguments are trainDir (the directory where the training feature vectors
 are kept), testDir (the directory where the testing feature vectors are kept), and outputModel the file name for the trained
 network. One note -- `diploSHIC.py` expects five files named `hard.fvec`, `soft.fvec`, `neut.fvec`, `linkedSoft.fvec`, and 
 `linkedHard.fvec` in the training and testing directories. The training and testing directory can be the same directory in 
@@ -244,11 +243,10 @@ statement
 ```
 $ python diploSHIC.py predict -h
 usage: diploSHIC.py predict [-h] [--numSubWins NUMSUBWINS]
-                            nDims modelStructure modelWeights predictFile
+                            modelStructure modelWeights predictFile
                             predictFileOutput
 
 required arguments:
-  nDims                 dimensionality of the feature vector
   modelStructure        path to CNN structure .json file
   modelWeights          path to CNN weights .h5 file
   predictFile           input file to predict
@@ -260,7 +258,7 @@ optional arguments:
                         number of subwindows that our chromosome is divided
                         into (default = 11)
 ```
-The predict mode takes as input nDims (as above), the two model files output by the train mode, an input file of empirical feature 
+The predict mode takes as input the two model files output by the train mode, an input file of empirical feature 
 vectors, and a file name for the prediction output. 
 
 #### a quick example of the train/predict cycle
