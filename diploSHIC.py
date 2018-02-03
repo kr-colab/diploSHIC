@@ -112,7 +112,7 @@ if argsDict['mode'] == 'train':
     #nCores = 12
     print("loading data now...")
     #training data
-    finalCol = (numSubWins * nDims)+1
+    
     hard = np.loadtxt(trainingDir+"hard.fvec",skiprows=1)
     nDims = int(hard.shape[1] / numSubWins)
     h1 = np.reshape(hard,(hard.shape[0],nDims,numSubWins))
