@@ -235,7 +235,7 @@ def readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMas
         fopen = gzip.open
     else:
         fopen = open
-    with fopen(maskFileName) as maskFile:
+    with fopen(maskFileName,mode='r') as maskFile:
         for line in maskFile:
             if line.startswith(">"):
                 currChr = line[1:].strip()
