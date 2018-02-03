@@ -86,7 +86,11 @@ def standardize_by_allele_count_from_precomp_bins(score, dafs, standardizationIn
     return score_standardized
 
 def readFaArm(armFileName, armName=False):
-    with open(armFileName) as armFile:
+    if armFileName.endswith(".gz"):
+        fopen = gzip.open
+    else:
+        fopen = open
+    with fopen(armFileName) as armFile:
         reading = False
         seq = ""
         for line in armFile:
@@ -174,6 +178,10 @@ def windowVals(vals, subWinBounds, positionArray, keepNans=False, absVal=False):
 
 def readFa(faFileName, upper=False):
     seqData = {}
+    if faFileName.endswith(".gz"):
+        fopen = gzip.open
+    else:
+        fopen = open
     with open(faFileName) as faFile:
         reading = False
         for line in faFile:
@@ -224,10 +232,10 @@ def readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMas
     isAccessible = []
     isAccessibleSub = []
     if maskFileName.endswith(".gz"):
-        readFunc = gzip.open
+        fopen = gzip.open
     else:
-        readFunc = open
-    with readFunc(maskFileName) as maskFile:
+        fopen = open
+    with fopen(maskFileName) as maskFile:
         for line in maskFile:
             if line.startswith(">"):
                 currChr = line[1:].strip()
@@ -264,7 +272,11 @@ def readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMas
 def readMaskDataForScan(maskFileName, chrArm):
     isAccessible = []
     readingMasks = False
-    with open(maskFileName) as maskFile:
+    if maskFileName.endswith(".gz"):
+        fopen = gzip.open
+    else:
+        fopen = open
+    with fopen(maskFileName) as maskFile:
         for line in maskFile:
             if line.startswith(">"):
                 currChr = line[1:].strip()
