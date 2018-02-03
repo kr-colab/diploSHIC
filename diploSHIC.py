@@ -299,12 +299,12 @@ elif argsDict['mode'] == 'fvecVcf':
     if argsDict['shicMode'].lower() == 'diploid':
         cmdArgs = [argsDict['chrArmVcfFile'], argsDict['chrArm'], argsDict['chrLen'], argsDict['targetPop'], argsDict['winSize'],
                    argsDict['numSubWins'], argsDict['maskFileName'], argsDict['unmaskedFracCutoff'], argsDict['sampleToPopFileName'],
-                   argsDict['statFileName']]
+                   argsDict['statFileName'], argsDict['fvecFileName']]
         cmd = "python makeFeatureVecsForChrArmFromVcfDiploid.py " + " ".join([str(x) for x in cmdArgs])
     elif argsDict['shicMode'].lower() == 'haploid':
         cmdArgs = [argsDict['chrArmVcfFile'], argsDict['chrArm'], argsDict['chrLen'], argsDict['targetPop'], argsDict['winSize'],
                argsDict['numSubWins'], argsDict['maskFileName'], argsDict['unmaskedFracCutoff'], argsDict['sampleToPopFileName'],
-               argsDict['ancFileName'], argsDict['statFileName']]
+               argsDict['ancFileName'], argsDict['statFileName'], argsDict['fvecFileName']]
         cmd = "python makeFeatureVecsForChrArmFromVcf_ogSHIC.py " + " ".join([str(x) for x in cmdArgs])
     else:
         sys.exit("'shicMode' must be set to either 'diploid' or 'haploid'")
@@ -312,5 +312,6 @@ elif argsDict['mode'] == 'fvecVcf':
     if argsDict['segmentStart'] != "None":
         additionalArgs += [argsDict['segmentStart'], argsDict['segmentEnd']]
         cmd += " " + " ".join(additionalArgs)
-    print(cmd + " > " + argsDict['fvecFileName'])
+    #cmd += " > " + argsDict['fvecFileName']
+    print(cmd)
     subprocess.call(cmd.split())
