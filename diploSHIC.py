@@ -5,8 +5,8 @@ parser = argparse.ArgumentParser(description='calculate feature fectors, train, 
 parser._positionals.title = 'possible modes (enter \'python diploSHIC.py modeName -h\' for modeName\'s help message'
 subparsers = parser.add_subparsers(help='sub-command help')
 parser_a = subparsers.add_parser('train', help='train and test a shic CNN')
-parser_a.add_argument('nDims', metavar='nDims', type=int, 
-                   help='dimensionality of the feature vector')
+#parser_a.add_argument('nDims', metavar='nDims', type=int, 
+#                   help='dimensionality of the feature vector')
 parser_a.add_argument('trainDir', help='path to training set files')
 parser_a.add_argument('testDir', help='path to test set files, can be same as trainDir')
 parser_a.add_argument('outputModel', help='file name for output model, will create two files one with structure one with weights')
@@ -16,8 +16,8 @@ parser_a.set_defaults(mode='train')
 parser_a._positionals.title = 'required arguments'
 
 parser_b = subparsers.add_parser('predict', help='perform prediction using an already-trained SHIC CNN')
-parser_b.add_argument('nDims', metavar='nDims', type=int, 
-                   help='dimensionality of the feature vector')
+#parser_b.add_argument('nDims', metavar='nDims', type=int, 
+#                   help='dimensionality of the feature vector')
 parser_b.add_argument('modelStructure', help='path to CNN structure .json file')
 parser_b.add_argument('modelWeights', help='path to CNN weights .h5 file')
 parser_b.add_argument('predictFile', help='input file to predict')
@@ -101,7 +101,7 @@ if argsDict['mode'] in ['train', 'predict']:
     import keras.backend as K
     import fnmatch
 
-    nDims = argsDict['nDims']
+    #nDims = argsDict['nDims']
     numSubWins = argsDict['numSubWins']
 
 if argsDict['mode'] == 'train':
@@ -114,17 +114,15 @@ if argsDict['mode'] == 'train':
     #training data
     finalCol = (numSubWins * nDims)+1
     hard = np.loadtxt(trainingDir+"hard.fvec",skiprows=1)
-    nDims = hard.shape[1] / numSubWins
-    print(nDims)
-    sys.exit(1)
+    nDims = int(hard.shape[1] / numSubWins)
     h1 = np.reshape(hard,(hard.shape[0],nDims,numSubWins))
-    neut = np.loadtxt(trainingDir+"neut.fvec",skiprows=1,usecols=list(range(1,finalCol)))
+    neut = np.loadtxt(trainingDir+"neut.fvec",skiprows=1)
     n1 = np.reshape(neut,(neut.shape[0],nDims,numSubWins))
-    soft = np.loadtxt(trainingDir+"soft.fvec",skiprows=1,usecols=list(range(1,finalCol)))
+    soft = np.loadtxt(trainingDir+"soft.fvec",skiprows=1)
     s1 = np.reshape(soft,(soft.shape[0],nDims,numSubWins))
-    lsoft = np.loadtxt(trainingDir+"linkedSoft.fvec",skiprows=1,usecols=list(range(1,finalCol)))
+    lsoft = np.loadtxt(trainingDir+"linkedSoft.fvec",skiprows=1)
     ls1 = np.reshape(lsoft,(lsoft.shape[0],nDims,numSubWins))
-    lhard = np.loadtxt(trainingDir+"linkedHard.fvec",skiprows=1,usecols=list(range(1,finalCol)))
+    lhard = np.loadtxt(trainingDir+"linkedHard.fvec",skiprows=1)
     lh1 = np.reshape(lhard,(lhard.shape[0],nDims,numSubWins))
 
     both=np.concatenate((h1,n1,s1,ls1,lh1))
@@ -138,15 +136,15 @@ if argsDict['mode'] == 'train':
         X_train = both
         y_train = y
         #testing data
-        hard = np.loadtxt(testingDir+"hard.fvec",skiprows=1,usecols=list(range(1,finalCol)))
+        hard = np.loadtxt(testingDir+"hard.fvec",skiprows=1)
         h1 = np.reshape(hard,(hard.shape[0],nDims,numSubWins))
-        neut = np.loadtxt(testingDir+"neut.fvec",skiprows=1,usecols=list(range(1,finalCol)))
+        neut = np.loadtxt(testingDir+"neut.fvec",skiprows=1)
         n1 = np.reshape(neut,(neut.shape[0],nDims,numSubWins))
-        soft = np.loadtxt(testingDir+"soft.fvec",skiprows=1,usecols=list(range(1,finalCol)))
+        soft = np.loadtxt(testingDir+"soft.fvec",skiprows=1)
         s1 = np.reshape(soft,(soft.shape[0],nDims,numSubWins))
-        lsoft = np.loadtxt(testingDir+"linkedSoft.fvec",skiprows=1,usecols=list(range(1,finalCol)))
+        lsoft = np.loadtxt(testingDir+"linkedSoft.fvec",skiprows=1)
         ls1 = np.reshape(lsoft,(lsoft.shape[0],nDims,numSubWins))
-        lhard = np.loadtxt(testingDir+"linkedHard.fvec",skiprows=1,usecols=list(range(1,finalCol)))
+        lhard = np.loadtxt(testingDir+"linkedHard.fvec",skiprows=1)
         lh1 = np.reshape(lhard,(lhard.shape[0],nDims,numSubWins))
 
         both2=np.concatenate((h1,n1,s1,ls1,lh1))
@@ -250,6 +248,7 @@ elif argsDict['mode'] == 'predict':
     #import data from predictFile
     x_df=pd.read_table(argsDict['predictFile'])
     testX = x_df[list(x_df)[4:]].as_matrix()
+    nDims = int(testX.shape[1]/numSubWins)
     np.reshape(testX,(testX.shape[0],nDims,numSubWins))
     #add channels
     testX = testX.reshape(testX.shape[0],nDims,numSubWins,1)
