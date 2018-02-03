@@ -23,7 +23,7 @@ for trainingFilePrefix in [softTrainingFilePrefix, hardTrainingFilePrefix]:
 
 def getExamplesFromFVFile(simFileName):
     try:
-        simFile = open(simFileName)
+        simFile = open(simFileName,'rt')
         lines = [line.strip() for line in simFile.readlines() if not "nan" in line]
         header = lines[0]
         examples = lines[1:]
@@ -68,7 +68,7 @@ outExamples = [neutExamples, linkedSoftExamples, softExamples, linkedHardExample
 for i in range(len(outFileNames)):
     if outExamples[i]:
         outFile = open(outDir +"/"+ outFileNames[i], "w")
-        outFile.write("classLabel\t%s\n" %(hardHeader))
+        outFile.write(hardHeader+"\n")
         for example in outExamples[i]:
-            outFile.write("%s\t%s\n" %(i, example))
+            outFile.write("%s\n" %(example))
         outFile.close()
