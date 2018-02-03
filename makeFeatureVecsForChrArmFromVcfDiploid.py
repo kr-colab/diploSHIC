@@ -6,13 +6,15 @@ import sys
 import time
 from fvTools import *
 
-if not len(sys.argv) in [11,13]:
-    sys.exit("usage:\npython makeFeatureVecsForChrArmFromVcfDiploid.py chrArmFileName chrArm chrLen targetPop winSize numSubWins maskFileName unmaskedFracCutoff sampleToPopFileName statFileName [segmentStart segmentEnd]\n")
-if len(sys.argv) == 13:
-    chrArmFileName, chrArm, chrLen, targetPop, winSize, numSubWins, maskFileName, unmaskedFracCutoff, sampleToPopFileName, statFileName, segmentStart, segmentEnd = sys.argv[1:]
+#print(len(sys.argv))
+#print(sys.argv)
+if not len(sys.argv) in [12,14]:
+    sys.exit("usage:\npython makeFeatureVecsForChrArmFromVcfDiploid.py chrArmFileName chrArm chrLen targetPop winSize numSubWins maskFileName unmaskedFracCutoff sampleToPopFileName statFileName outFileName [segmentStart segmentEnd]\n")
+if len(sys.argv) == 14:
+    chrArmFileName, chrArm, chrLen, targetPop, winSize, numSubWins, maskFileName, unmaskedFracCutoff, sampleToPopFileName, statFileName, outfn, segmentStart, segmentEnd = sys.argv[1:]
     segmentStart, segmentEnd = int(segmentStart), int(segmentEnd)
 else:
-    chrArmFileName, chrArm, chrLen, targetPop, winSize, numSubWins, maskFileName, unmaskedFracCutoff, sampleToPopFileName, statFileName = sys.argv[1:]
+    chrArmFileName, chrArm, chrLen, targetPop, winSize, numSubWins, maskFileName, unmaskedFracCutoff, sampleToPopFileName, statFileName, outfn = sys.argv[1:]
     segmentStart = None
 
 unmaskedFracCutoff = float(unmaskedFracCutoff)
@@ -110,7 +112,8 @@ for statName in statNames:
         header.append("%s_win%d" %(statName, i))
 statHeader = "\t".join(statHeader)
 header = "\t".join(header)
-print(header)
+outFile=open(outfn,'w')
+outFile.write(header+"\n")
 statVals = {}
 for statName in statNames:
     statVals[statName] = []
@@ -147,9 +150,10 @@ for subWinStart in range(1, lastSubWinStart+1, subWinSize):
             outVec += normalizeFeatureVec(statVals[statName][-numSubWins:])
         midSubWinEnd = subWinEnd - subWinSize*(numSubWins/2)
         midSubWinStart = midSubWinEnd-subWinSize+1
-        print("%s\t%d\t%d\t%d-%d\t" %(chrArm, midSubWinStart, midSubWinEnd, subWinEnd-winSize+1, subWinEnd) + "\t".join([str(x) for x in outVec]))
-
+        outFile.write("%s\t%d\t%d\t%d-%d\t" %(chrArm, midSubWinStart, midSubWinEnd, subWinEnd-winSize+1, subWinEnd) + "\t".join([str(x) for x in outVec]))
+        outFile.write('\n')
     subWinIndex += 1
 if statFileName:
     statFile.close()
+outFile.close()
 sys.stderr.write("completed in %g seconds\n" %(time.clock()-startTime))
