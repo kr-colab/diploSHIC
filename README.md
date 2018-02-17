@@ -268,7 +268,7 @@ genomic data). Let's quickly give that code a spin. The directories `testing/` a
 formatted diploid feature vectors that are ready to be fed into diploSHIC. First we will train the diploSHIC CNN, but we will
 restrict the number of training epochs to 10 to keep things relatively brief (this runs in less than 5 minutes on our server). 
 ```
-$ python diploSHIC.py train 12 training/ testing/ fooModel --epochs 10
+$ python diploSHIC.py train training/ testing/ fooModel --epochs 10
 ```
 as it runs a bunch of information monitoring the training of the network will apear. We are tracking the loss and accuracy in the
 validation set. When optimization is complete our trained network will be contained in two files, `fooModel.json` and 
