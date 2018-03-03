@@ -1,7 +1,7 @@
 import argparse,time,sys,subprocess
 
 ################# use argparse to get CL args and make sure we are kosher
-parser = argparse.ArgumentParser(description='calculate feature fectors, train, or predict with diploSHIC')
+parser = argparse.ArgumentParser(description='calculate feature vectors, train, or predict with diploSHIC')
 parser._positionals.title = 'possible modes (enter \'python diploSHIC.py modeName -h\' for modeName\'s help message'
 subparsers = parser.add_subparsers(help='sub-command help')
 parser_c = subparsers.add_parser('fvecSim', help='Generate feature vectors from simulated data')
