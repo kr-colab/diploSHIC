@@ -216,8 +216,8 @@ statistics for, the length of that chromosome, and the name of the output file.
 Once we have feature vector files ready to go we can train and test our CNN and then finally do prediction on empirical data.
 
 ### formatting our training set
-Before entering train mode we need to consolidate our training set into 5 files, one for each class. We need to point it to
-simulated examples of neutral evolution, and hard sweeps and soft sweeps in varying locations. The help message is as follows:
+Before entering train mode we need to consolidate our training set into 5 files, one for each class. This is done using the
+makeTrainingSets mode whose help message is as follows:
 ```
 $ python diploSHIC.py makeTrainingSets -h
 usage: diploSHIC.py makeTrainingSets [-h]
