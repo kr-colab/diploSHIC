@@ -14,7 +14,6 @@ for trainingFilePrefix in [softTrainingFilePrefix, hardTrainingFilePrefix]:
 
     for fileName in os.listdir(trainingSetDir):
         if fileName.startswith(trainingFilePrefixDirless):
-            #equilibSoft_1.msout
             winNum = int(fileName.split("_")[1].split(".")[0])
             if winNum in linkedWins:
                 linkedFilePaths[trainingFilePrefix].append(trainingSetDir + "/" + fileName)

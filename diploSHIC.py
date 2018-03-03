@@ -4,7 +4,11 @@ import argparse,time,sys,subprocess
 parser = argparse.ArgumentParser(description='calculate feature fectors, train, or predict with diploSHIC')
 parser._positionals.title = 'possible modes (enter \'python diploSHIC.py modeName -h\' for modeName\'s help message'
 subparsers = parser.add_subparsers(help='sub-command help')
+parser_c = subparsers.add_parser('fvecSim', help='Generate feature vectors from simulated data')
+parser_e = subparsers.add_parser('makeTrainingSets', help='Combine feature vectors from muliple fvecSim runs into 5 balanced training sets')
 parser_a = subparsers.add_parser('train', help='train and test a shic CNN')
+parser_d = subparsers.add_parser('fvecVcf', help='Generate feature vectors from data in a VCF file')
+parser_b = subparsers.add_parser('predict', help='perform prediction using an already-trained SHIC CNN')
 #parser_a.add_argument('nDims', metavar='nDims', type=int, 
 #                   help='dimensionality of the feature vector')
 parser_a.add_argument('trainDir', help='path to training set files')
@@ -15,7 +19,6 @@ parser_a.add_argument('--numSubWins', type=int, help='number of subwindows that 
 parser_a.set_defaults(mode='train')
 parser_a._positionals.title = 'required arguments'
 
-parser_b = subparsers.add_parser('predict', help='perform prediction using an already-trained SHIC CNN')
 #parser_b.add_argument('nDims', metavar='nDims', type=int, 
 #                   help='dimensionality of the feature vector')
 parser_b.add_argument('modelStructure', help='path to CNN structure .json file')
@@ -26,7 +29,6 @@ parser_b.add_argument('--numSubWins', type=int, help='number of subwindows that 
 parser_b.set_defaults(mode='predict')
 parser_b._positionals.title = 'required arguments'
 
-parser_c = subparsers.add_parser('fvecSim', help='Generate feature vectors from simulated data')
 parser_c.add_argument('shicMode', help='specifies whether to use original haploid SHIC (use \'haploid\') or diploSHIC (\'diploid\')',
                           default='diploid')
 parser_c.add_argument('msOutFile', help='path to simulation output file (must be same format used by Hudson\'s ms)')
@@ -50,7 +52,6 @@ parser_c.add_argument('--pMisPol', type=float, help='The fraction of sites that 
 parser_c.set_defaults(mode='fvecSim')
 parser_c._positionals.title = 'required arguments'
 
-parser_d = subparsers.add_parser('fvecVcf', help='Generate feature vectors from data in a VCF file')
 parser_d.add_argument('shicMode', help='specifies whether to use original haploid SHIC (use \'haploid\') or diploSHIC (\'diploid\')')
 parser_d.add_argument('chrArmVcfFile', help='VCF format file containing data for our chromosome arm (other arms will be ignored)')
 parser_d.add_argument('chrArm', help='Exact name of the chromosome arm for which feature vectors will be calculated')
@@ -76,6 +77,18 @@ parser_d.add_argument('--segmentEnd', help='Right boundary of region in which fe
 parser_d.set_defaults(mode='fvecVcf')
 parser_d._positionals.title = 'required arguments'
 
+parser_e.add_argument('neutTrainingFileName', help='Path to our neutral feature vectors')
+parser_e.add_argument('softTrainingFilePrefix', help=('Prefix (including higher-level path) of files containing soft training examples'
+                          '; files must end with \'_$i.$ext\' where $i is the subwindow index of the sweep and $ext is any extension.'))
+parser_e.add_argument('hardTrainingFilePrefix', help=('Prefix (including higher-level path) of files containing hard training examples'
+                          '; files must end with \'_$i.$ext\' where $i is the subwindow index of the sweep and $ext is any extension.'))
+parser_e.add_argument('sweepTrainingWindows', type=int, help=('comma-separated list of windows to classify as sweeps (usually just \'5\''
+                          ' but without the quotes)'))
+parser_e.add_argument('linkedTrainingWindows', help=('list of windows to treat as linked to sweeps (usually \'0,1,2,3,4,6,7,8,9,10\' but'
+                          ' without the quotes)'))
+parser_e.add_argument('outDir', help='path to directory where the training sets will be written')
+parser_e.set_defaults(mode='makeTrainingSets')
+parser_e._positionals.title = 'required arguments'
 if len(sys.argv)==1:
     parser.print_help()
     sys.exit(1)
@@ -315,5 +328,11 @@ elif argsDict['mode'] == 'fvecVcf':
         additionalArgs += [argsDict['segmentStart'], argsDict['segmentEnd']]
         cmd += " " + " ".join(additionalArgs)
     #cmd += " > " + argsDict['fvecFileName']
+    print(cmd)
+    subprocess.call(cmd.split())
+elif argsDict['mode'] == 'makeTrainingSets':
+    cmdArgs = [argsDict['neutTrainingFileName'], argsDict['softTrainingFilePrefix'], argsDict['hardTrainingFilePrefix'],
+               argsDict['sweepTrainingWindows'], argsDict['linkedTrainingWindows'], argsDict['outDir']]
+    cmd = "python makeTrainingSets.py " + " ".join([str(x) for x in cmdArgs])
     print(cmd)
     subprocess.call(cmd.split())

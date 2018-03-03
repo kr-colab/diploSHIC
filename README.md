@@ -64,16 +64,24 @@ usage: diploSHIC.py [-h] {train,predict,fvecSim,fvecVcf} ...
 calculate feature fectors, train, or predict with diploSHIC
 
 possible modes (enter 'python diploSHIC.py modeName -h' for modeName's help message:
-  {train,predict,fvecSim,fvecVcf}
+  {fvecSim,makeTrainingSets,train,fvecVcf,predict}
                         sub-command help
-    train               train and test a shic CNN
-    predict             perform prediction using an already-trained SHIC CNN
     fvecSim             Generate feature vectors from simulated data
+    makeTrainingSets    Combine feature vectors from muliple fvecSim runs into
+                        5 balanced training sets
+    train               train and test a shic CNN
     fvecVcf             Generate feature vectors from data in a VCF file
+    predict             perform prediction using an already-trained SHIC CNN
 
 optional arguments:
   -h, --help            show this help message and exit
 ```
+### before running diploSHIC: simulating training/testing data
+All flavors of S/HIC require simulated data for training (and ideally, testing). Users can select whatever simulator 
+they prefer and parameterize them however they wish. We have included an example script in this respository 
+(generateSimLaunchScript.py) which demonstrates how a training set can be simulated with discoal (available at 
+https://github.com/kern-lab/discoal).
+
 ### feature vector generation modes
 The first task in our pipeline is generating feature vectors from simulation data (or empirical data) to
 use with the CNN that we will train and then use for prediction. The `diploSHIC.py` script eases this 
@@ -207,6 +215,41 @@ statistics for, the length of that chromosome, and the name of the output file.
 ### training the CNN and prediction
 Once we have feature vector files ready to go we can train and test our CNN and then finally do prediction on empirical data.
 
+### formatting our training set
+Before entering train mode we need to consolidate our training set into 5 files, one for each class. We need to point it to
+simulated examples of neutral evolution, and hard sweeps and soft sweeps in varying locations. The help message is as follows:
+```
+$ python diploSHIC.py makeTrainingSets -h
+usage: diploSHIC.py makeTrainingSets [-h]
+                                     neutTrainingFileName
+                                     softTrainingFilePrefix
+                                     hardTrainingFilePrefix
+                                     sweepTrainingWindows
+                                     linkedTrainingWindows outDir
+
+required arguments:
+  neutTrainingFileName  Path to our neutral feature vectors
+  softTrainingFilePrefix
+                        Prefix (including higher-level path) of files
+                        containing soft training examples; files must end with
+                        '_$i.$ext' where $i is the subwindow index of the
+                        sweep and $ext is any extension.
+  hardTrainingFilePrefix
+                        Prefix (including higher-level path) of files
+                        containing hard training examples; files must end with
+                        '_$i.$ext' where $i is the subwindow index of the
+                        sweep and $ext is any extension.
+  sweepTrainingWindows  comma-separated list of windows to classify as sweeps
+                        (usually just '5' but without the quotes)
+  linkedTrainingWindows
+                        list of windows to treat as linked to sweeps (usually
+                        '0,1,2,3,4,6,7,8,9,10' but without the quotes)
+  outDir                path to directory where the training sets will be
+                        written
+
+optional arguments:
+  -h, --help            show this help message and exit
+```
 #### train mode
 Here is the help message for the train mode of `diploSHIC.py`
 ```
