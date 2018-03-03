@@ -61,7 +61,7 @@ We can see the top level of this help by typing
 $ python diploSHIC.py -h
 usage: diploSHIC.py [-h] {train,predict,fvecSim,fvecVcf} ...
 
-calculate feature fectors, train, or predict with diploSHIC
+calculate feature vectors, train, or predict with diploSHIC
 
 possible modes (enter 'python diploSHIC.py modeName -h' for modeName's help message:
   {fvecSim,makeTrainingSets,train,fvecVcf,predict}
