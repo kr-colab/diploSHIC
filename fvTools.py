@@ -118,7 +118,7 @@ def polarizeSnps(unmasked, positions, refAlleles, altAlleles, ancArm):
     mapping = []
     for i in range(len(ancArm)):
         if ancArm[i] in 'ACGT':
-            if isSnp.has_key(i+1):
+            if i+1 in isSnp:
                 ref, alt = refAlleles[isSnp[i+1]], altAlleles[isSnp[i+1]]
                 if ancArm[i] == ref:
                     mapping.append([0, 1]) #no swap
@@ -129,7 +129,7 @@ def polarizeSnps(unmasked, positions, refAlleles, altAlleles, ancArm):
                     unmasked[i] = False
         elif ancArm[i] == "N":
             unmasked[i] = False
-            if isSnp.has_key(i+1):
+            if i+1 in isSnp:
                 mapping.append([0, 1]) #no swap -- failed to polarize
         else:
             sys.exit("Found a character in ancestral chromosome that is not 'A', 'C', 'G', 'T' or 'N' (all upper case)! AAARRRGGGHHHHHHHHH!!!\n")
