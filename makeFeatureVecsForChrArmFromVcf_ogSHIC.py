@@ -171,7 +171,7 @@ for subWinStart in range(1, lastSubWinStart+1, subWinSize):
         midSubWinEnd = subWinEnd - subWinSize*(numSubWins/2)
         midSubWinStart = midSubWinEnd-subWinSize+1
         outFile.write("%s\t%d\t%d\t%d-%d\t" %(chrArm, midSubWinStart, midSubWinEnd, subWinEnd-winSize+1, subWinEnd) + "\t".join([str(x) for x in outVec]))
-
+        outFile.write('\n')
     subWinIndex += 1
 if statFileName:
     statFile.close()
