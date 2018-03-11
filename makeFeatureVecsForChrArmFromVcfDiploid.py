@@ -6,8 +6,6 @@ import sys
 import time
 from fvTools import *
 
-#print(len(sys.argv))
-#print(sys.argv)
 if not len(sys.argv) in [12,14]:
     sys.exit("usage:\npython makeFeatureVecsForChrArmFromVcfDiploid.py chrArmFileName chrArm chrLen targetPop winSize numSubWins maskFileName unmaskedFracCutoff sampleToPopFileName statFileName outFileName [segmentStart segmentEnd]\n")
 if len(sys.argv) == 14:
@@ -98,7 +96,7 @@ for i in range(len(isBiallelic)):
 snpIndicesToKeep = [i for i in range(len(positions)) if unmasked[positions[i]-1]]
 genos = allel.GenotypeArray(genos.subset(sel0=snpIndicesToKeep))
 positions = [positions[i] for i in snpIndicesToKeep]
-alleleCounts = allel.AlleleCountsArray([alleleCounts[i] for i in snpIndicesToKeep])
+alleleCounts = allel.AlleleCountsArray([[alleleCounts[i][0], max(alleleCounts[i][1:])] for i in snpIndicesToKeep])
 
 statNames = ["pi", "thetaW", "tajD", "distVar","distSkew","distKurt","nDiplos","diplo_H1","diplo_H12","diplo_H2/H1","diplo_ZnS","diplo_Omega"]
 

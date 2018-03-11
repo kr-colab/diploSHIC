@@ -7,7 +7,7 @@ import time
 from fvTools import *
 
 if not len(sys.argv) in [13,15]:
-    sys.exit("usage:\npython makeFeatureVecsForChrArm.py chrArmFileName chrArm chrLen targetPop winSize numSubWins maskFileName sampleToPopFileName ancestralArmFaFileName statFileName outFileName [segmentStart segmentEnd]\n")
+    sys.exit("usage:\npython makeFeatureVecsForChrArmFromVcf_ogSHIC.py chrArmFileName chrArm chrLen targetPop winSize numSubWins maskFileName sampleToPopFileName ancestralArmFaFileName statFileName outFileName [segmentStart segmentEnd]\n")
 if len(sys.argv) == 15:
     chrArmFileName, chrArm, chrLen, targetPop, winSize, numSubWins, maskFileName, unmaskedFracCutoff, sampleToPopFileName, ancestralArmFaFileName, statFileName, outfn, segmentStart, segmentEnd = sys.argv[1:]
     segmentStart, segmentEnd = int(segmentStart), int(segmentEnd)
@@ -89,27 +89,34 @@ if segmentStart != None:
 genos = allel.GenotypeArray(genos.subset(sel1=sampleIndicesToKeep))
 alleleCounts = genos.count_alleles()
 
-#remove all but mono/biallelic unmasked sites that could be polarized
-ancArm = readFaArm(ancestralArmFaFileName, chrArm).upper()
-sys.stderr.write("polarizing snps\n")
-startTime = time.clock()
-#NOTE: mapping specifies which alleles to swap counts for based on polarization; leaves unpolarized snps alone
-#NOTE: those snps need to be filtered later on (as done below)!
-mapping, unmasked = polarizeSnps(unmasked, positions, refAlleles, altAlleles, ancArm)
-sys.stderr.write("took %s seconds\n" %(time.clock()-startTime))
+#remove all but mono/biallelic unmasked sites
 isBiallelic = alleleCounts.is_biallelic()
 for i in range(len(isBiallelic)):
     if not isBiallelic[i]:
         unmasked[positions[i]-1] = False
+
+#polarize
+if not ancestralArmFaFileName.lower() in ["none", "false"]:
+    sys.stderr.write("polarizing snps\n")
+    ancArm = readFaArm(ancestralArmFaFileName, chrArm).upper()
+    startTime = time.clock()
+    #NOTE: mapping specifies which alleles to swap counts for based on polarization; leaves unpolarized snps alone
+    #NOTE: those snps need to be filtered later on (as done below)!
+    # this will also remove sites that could not be polarized
+    mapping, unmasked = polarizeSnps(unmasked, positions, refAlleles, altAlleles, ancArm)
+    sys.stderr.write("took %s seconds\n" %(time.clock()-startTime))
+    statNames = ["pi", "thetaW", "tajD", "thetaH", "fayWuH", "HapCount", "H1", "H12", "H2/H1", "ZnS", "Omega", "distVar", "distSkew", "distKurt"]
+else:
+    statNames = ["pi", "thetaW", "tajD", "HapCount", "H1", "H12", "H2/H1", "ZnS", "Omega", "distVar", "distSkew", "distKurt"]
+
 snpIndicesToKeep = [i for i in range(len(positions)) if unmasked[positions[i]-1]]
 genos = allel.GenotypeArray(genos.subset(sel0=snpIndicesToKeep))
 positions = [positions[i] for i in snpIndicesToKeep]
-alleleCounts = allel.AlleleCountsArray([alleleCounts[i] for i in snpIndicesToKeep])
-mapping = [mapping[i] for i in snpIndicesToKeep]
-alleleCounts = alleleCounts.map_alleles(mapping)
+alleleCounts = allel.AlleleCountsArray([[alleleCounts[i][0], max(alleleCounts[i][1:])] for i in snpIndicesToKeep])
+if not ancestralArmFaFileName.lower in ["none", "false"]:
+    mapping = [mapping[i] for i in snpIndicesToKeep]
+    alleleCounts = alleleCounts.map_alleles(mapping)
 haps = genos.to_haplotypes()
-
-statNames = ["pi", "thetaW", "tajD", "thetaH", "fayWuH", "HapCount", "H1", "H12", "H2/H1", "ZnS", "Omega", "distVar", "distSkew", "distKurt"]
 
 subWinBounds = getSubWinBounds(chrLen, subWinSize)
 precomputedStats = {} #not using this

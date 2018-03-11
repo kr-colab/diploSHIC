@@ -562,7 +562,7 @@ def calcAndAppendStatValForScan(alleleCounts, snpLocs, statName, subWinStart, su
             statVals["H12"].append(h12)
         if "H123" in statVals:
             statVals["H123"].append(h123)
-        if "H2/H1" in statVal:
+        if "H2/H1" in statVals:
             statVals["H2/H1"].append(h21)
     elif statName == "ZnS":
         r2Matrix = shicstats.computeR2Matrix(hapsInSubWin)
