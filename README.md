@@ -1,5 +1,5 @@
 # diploS/HIC
-This repo contains the implementation for `diploS/HIC` as described in Kern and Schrider (2018; https://www.biorxiv.org/content/early/2018/02/18/267229), along 
+This repo contains the implementation for `diploS/HIC` as described in Kern and Schrider (2018; http://www.g3journal.org/content/early/2018/04/06/g3.118.200262), along 
 with its associated support scripts. `diploS/HIC` uses a deep convolutional neural network to identify
 hard and soft selective sweep in population genomic data. 
 
