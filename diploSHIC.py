@@ -1,5 +1,10 @@
 import argparse,time,sys,subprocess
 
+if "/" in sys.argv[0]:
+    diploShicDir = "/".join(sys.argv[0].split("/")[:-1]) + "/"
+else:
+    diploShicDir = ""
+
 ################# use argparse to get CL args and make sure we are kosher
 parser = argparse.ArgumentParser(description='calculate feature vectors, train, or predict with diploSHIC')
 parser._positionals.title = 'possible modes (enter \'python diploSHIC.py modeName -h\' for modeName\'s help message'
@@ -38,16 +43,23 @@ parser_c.add_argument('--totalPhysLen', type=int, help='Length of simulated chro
 parser_c.add_argument('--numSubWins', type=int, help='The number of subwindows that our chromosome will be divided into (default=11)', default=11)
 parser_c.add_argument('--maskFileName', help=('Path to a fasta-formatted file that contains masking information (marked by \'N\'). '
                           'If specified, simulations will be masked in a manner mirroring windows drawn from this file.'), default="None")
+parser_c.add_argument('--vcfForMaskFileName', help=('Path to a VCF file that contains genotype information. This will be used to mask genotypes '
+                          'in a manner that mirrors how the true data are masked.'), default=None)
+parser_c.add_argument('--popForMask', help='The label of the population for which we should draw genotype information from the VCF for masking purposes.',
+                          default=None)
+parser_c.add_argument('--sampleToPopFileName', help=('Path to tab delimited file with population assignments (used for genotype masking); format: '
+                          'SampleID\tpopID'), default="None")
+parser_c.add_argument('--unmaskedGenoFracCutoff', type=float, help='Fraction of unmasked genotypes required to retain a site (default=0.75)', default=0.75)
 parser_c.add_argument('--chrArmsForMasking', help=('A comma-separated list (no spaces) of chromosome arms from which we want to draw masking '
                           'information (or \'all\' if we want to use all arms. Ignored if maskFileName is not specified.'), default="all")
-parser_c.add_argument('--unmaskedFracCutoff', type=float, help='Minimum fraction of unmasked sites, if masking simulated data', default=0.25)
+parser_c.add_argument('--unmaskedFracCutoff', type=float, help='Minimum fraction of unmasked sites, if masking simulated data (default=0.25)', default=0.25)
 parser_c.add_argument('--outStatsDir', help='Path to a directory where values of each statistic in each subwindow are recorded for each rep',
                           default="None")
 parser_c.add_argument('--ancFileName', help=('Path to a fasta-formatted file that contains inferred ancestral states (\'N\' if unknown).'
                           ' This is used for masking, as sites that cannot be polarized are masked, and we mimic this in the simulted data.'
                           ' Ignored in diploid mode which currently does not use ancestral state information'),
                           default="None")
-parser_c.add_argument('--pMisPol', type=float, help='The fraction of sites that will be intentionally polarized to better approximate real data',
+parser_c.add_argument('--pMisPol', type=float, help='The fraction of sites that will be intentionally polarized to better approximate real data (default=0.0)',
                           default=0.0)
 parser_c.set_defaults(mode='fvecSim')
 parser_c._positionals.title = 'required arguments'
@@ -64,7 +76,8 @@ parser_d.add_argument('--winSize', type=int, help='Length of the large window (d
 parser_d.add_argument('--numSubWins', type=int, help='Number of sub-windows within each large window (default=11)', default=11)
 parser_d.add_argument('--maskFileName', help=('Path to a fasta-formatted file that contains masking information (marked by \'N\'); '
                           'must have an entry with title matching chrArm'), default="None")
-parser_d.add_argument('--unmaskedFracCutoff', type=float, help='Fraction of unmasked sites required to retain a subwindow', default=0.25)
+parser_d.add_argument('--unmaskedFracCutoff', type=float, help='Fraction of unmasked sites required to retain a subwindow (default=0.25)', default=0.25)
+parser_d.add_argument('--unmaskedGenoFracCutoff', type=float, help='Fraction of unmasked genotypes required to retain a site (default=0.75)', default=0.75)
 parser_d.add_argument('--ancFileName', help=('Path to a fasta-formatted file that contains inferred ancestral states (\'N\' if unknown); '
                           'must have an entry with title matching chrArm. Ignored for diploid mode which currently does not use ancestral '
                           'state information.'), default="None")
@@ -299,13 +312,14 @@ elif argsDict['mode'] == 'predict':
 elif argsDict['mode'] == 'fvecSim':
     if argsDict['shicMode'].lower() == 'diploid':
         cmdArgs = [argsDict['msOutFile'], argsDict['totalPhysLen'], argsDict['numSubWins'], argsDict['maskFileName'],
+                   argsDict['vcfForMaskFileName'], argsDict['popForMask'], argsDict['sampleToPopFileName'], argsDict['unmaskedGenoFracCutoff'],
                    argsDict['chrArmsForMasking'], argsDict['unmaskedFracCutoff'], argsDict['outStatsDir'], argsDict['fvecFileName']]
-        cmd = "python makeFeatureVecsForSingleMsDiploid.py " + " ".join([str(x) for x in cmdArgs])
+        cmd = "python " + diploShicDir + "makeFeatureVecsForSingleMsDiploid.py " + " ".join([str(x) for x in cmdArgs])
     elif argsDict['shicMode'].lower() == 'haploid':
         cmdArgs = [argsDict['msOutFile'], argsDict['totalPhysLen'], argsDict['numSubWins'], argsDict['maskFileName'], argsDict['ancFileName'],
                argsDict['chrArmsForMasking'], argsDict['unmaskedFracCutoff'], argsDict['pMisPol'], argsDict['outStatsDir'],
                argsDict['fvecFileName']]
-        cmd = "python makeFeatureVecsForSingleMs_ogSHIC.py " + " ".join([str(x) for x in cmdArgs])
+        cmd = "python " + diploShicDir + "makeFeatureVecsForSingleMs_ogSHIC.py " + " ".join([str(x) for x in cmdArgs])
     else:
         sys.exit("'shicMode' must be set to either 'diploid' or 'haploid'")
     print(cmd)
@@ -313,14 +327,14 @@ elif argsDict['mode'] == 'fvecSim':
 elif argsDict['mode'] == 'fvecVcf':
     if argsDict['shicMode'].lower() == 'diploid':
         cmdArgs = [argsDict['chrArmVcfFile'], argsDict['chrArm'], argsDict['chrLen'], argsDict['targetPop'], argsDict['winSize'],
-                   argsDict['numSubWins'], argsDict['maskFileName'], argsDict['unmaskedFracCutoff'], argsDict['sampleToPopFileName'],
-                   argsDict['statFileName'], argsDict['fvecFileName']]
-        cmd = "python makeFeatureVecsForChrArmFromVcfDiploid.py " + " ".join([str(x) for x in cmdArgs])
+                   argsDict['numSubWins'], argsDict['maskFileName'], argsDict['unmaskedFracCutoff'], argsDict['unmaskedGenoFracCutoff'],
+                   argsDict['sampleToPopFileName'], argsDict['statFileName'], argsDict['fvecFileName']]
+        cmd = "python " + diploShicDir + "makeFeatureVecsForChrArmFromVcfDiploid.py " + " ".join([str(x) for x in cmdArgs])
     elif argsDict['shicMode'].lower() == 'haploid':
         cmdArgs = [argsDict['chrArmVcfFile'], argsDict['chrArm'], argsDict['chrLen'], argsDict['targetPop'], argsDict['winSize'],
                argsDict['numSubWins'], argsDict['maskFileName'], argsDict['unmaskedFracCutoff'], argsDict['sampleToPopFileName'],
                argsDict['ancFileName'], argsDict['statFileName'], argsDict['fvecFileName']]
-        cmd = "python makeFeatureVecsForChrArmFromVcf_ogSHIC.py " + " ".join([str(x) for x in cmdArgs])
+        cmd = "python " + diploShicDir + "makeFeatureVecsForChrArmFromVcf_ogSHIC.py " + " ".join([str(x) for x in cmdArgs])
     else:
         sys.exit("'shicMode' must be set to either 'diploid' or 'haploid'")
     additionalArgs = []
@@ -333,6 +347,6 @@ elif argsDict['mode'] == 'fvecVcf':
 elif argsDict['mode'] == 'makeTrainingSets':
     cmdArgs = [argsDict['neutTrainingFileName'], argsDict['softTrainingFilePrefix'], argsDict['hardTrainingFilePrefix'],
                argsDict['sweepTrainingWindows'], argsDict['linkedTrainingWindows'], argsDict['outDir']]
-    cmd = "python makeTrainingSets.py " + " ".join([str(x) for x in cmdArgs])
+    cmd = "python " + diploShicDir + "makeTrainingSets.py " + " ".join([str(x) for x in cmdArgs])
     print(cmd)
     subprocess.call(cmd.split())
