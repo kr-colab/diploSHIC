@@ -1,5 +1,10 @@
 import argparse,time,sys,subprocess
 
+if "/" in sys.argv[0]:
+    diploShicDir = "/".join(sys.argv[0].split("/")[:-1]) + "/"
+else:
+    diploShicDir = ""
+
 ################# use argparse to get CL args and make sure we are kosher
 parser = argparse.ArgumentParser(description='calculate feature vectors, train, or predict with diploSHIC')
 parser._positionals.title = 'possible modes (enter \'python diploSHIC.py modeName -h\' for modeName\'s help message'
@@ -300,12 +305,12 @@ elif argsDict['mode'] == 'fvecSim':
     if argsDict['shicMode'].lower() == 'diploid':
         cmdArgs = [argsDict['msOutFile'], argsDict['totalPhysLen'], argsDict['numSubWins'], argsDict['maskFileName'],
                    argsDict['chrArmsForMasking'], argsDict['unmaskedFracCutoff'], argsDict['outStatsDir'], argsDict['fvecFileName']]
-        cmd = "python makeFeatureVecsForSingleMsDiploid.py " + " ".join([str(x) for x in cmdArgs])
+        cmd = "python " + diploShicDir + "makeFeatureVecsForSingleMsDiploid.py " + " ".join([str(x) for x in cmdArgs])
     elif argsDict['shicMode'].lower() == 'haploid':
         cmdArgs = [argsDict['msOutFile'], argsDict['totalPhysLen'], argsDict['numSubWins'], argsDict['maskFileName'], argsDict['ancFileName'],
                argsDict['chrArmsForMasking'], argsDict['unmaskedFracCutoff'], argsDict['pMisPol'], argsDict['outStatsDir'],
                argsDict['fvecFileName']]
-        cmd = "python makeFeatureVecsForSingleMs_ogSHIC.py " + " ".join([str(x) for x in cmdArgs])
+        cmd = "python " + diploShicDir + "makeFeatureVecsForSingleMs_ogSHIC.py " + " ".join([str(x) for x in cmdArgs])
     else:
         sys.exit("'shicMode' must be set to either 'diploid' or 'haploid'")
     print(cmd)
@@ -315,12 +320,12 @@ elif argsDict['mode'] == 'fvecVcf':
         cmdArgs = [argsDict['chrArmVcfFile'], argsDict['chrArm'], argsDict['chrLen'], argsDict['targetPop'], argsDict['winSize'],
                    argsDict['numSubWins'], argsDict['maskFileName'], argsDict['unmaskedFracCutoff'], argsDict['sampleToPopFileName'],
                    argsDict['statFileName'], argsDict['fvecFileName']]
-        cmd = "python makeFeatureVecsForChrArmFromVcfDiploid.py " + " ".join([str(x) for x in cmdArgs])
+        cmd = "python " + diploShicDir + "makeFeatureVecsForChrArmFromVcfDiploid.py " + " ".join([str(x) for x in cmdArgs])
     elif argsDict['shicMode'].lower() == 'haploid':
         cmdArgs = [argsDict['chrArmVcfFile'], argsDict['chrArm'], argsDict['chrLen'], argsDict['targetPop'], argsDict['winSize'],
                argsDict['numSubWins'], argsDict['maskFileName'], argsDict['unmaskedFracCutoff'], argsDict['sampleToPopFileName'],
                argsDict['ancFileName'], argsDict['statFileName'], argsDict['fvecFileName']]
-        cmd = "python makeFeatureVecsForChrArmFromVcf_ogSHIC.py " + " ".join([str(x) for x in cmdArgs])
+        cmd = "python " + diploShicDir + "makeFeatureVecsForChrArmFromVcf_ogSHIC.py " + " ".join([str(x) for x in cmdArgs])
     else:
         sys.exit("'shicMode' must be set to either 'diploid' or 'haploid'")
     additionalArgs = []
@@ -333,6 +338,6 @@ elif argsDict['mode'] == 'fvecVcf':
 elif argsDict['mode'] == 'makeTrainingSets':
     cmdArgs = [argsDict['neutTrainingFileName'], argsDict['softTrainingFilePrefix'], argsDict['hardTrainingFilePrefix'],
                argsDict['sweepTrainingWindows'], argsDict['linkedTrainingWindows'], argsDict['outDir']]
-    cmd = "python makeTrainingSets.py " + " ".join([str(x) for x in cmdArgs])
+    cmd = "python " + diploShicDir + "makeTrainingSets.py " + " ".join([str(x) for x in cmdArgs])
     print(cmd)
     subprocess.call(cmd.split())
