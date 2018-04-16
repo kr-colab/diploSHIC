@@ -71,7 +71,7 @@ def msOutToHaplotypeArrayIn(msOutputFileName, totalPhysLen):
         if msOutputFileName.endswith(".gz"):
             msStream = gzip.open(msOutputFileName,'rt')
         else:
-            msStream = open(msOutputFileName)
+            msStream = open(msOutputFileName, 'rt')
 
     header = msStream.readline()
     program,numSamples,numSims = header.strip().split()[:3]
@@ -178,7 +178,5 @@ def readNextMsRepToHaplotypeArrayIn(fileInfoTuple, numSamples, totalPhysLen):
         if len(samples) != numSamples:
             raise Exception
         hapArrayIn, positions = msRepToHaplotypeArrayIn(samples, positions, totalPhysLen)
-
-    line = msStream.readline()
 
     return hapArrayIn, positions
