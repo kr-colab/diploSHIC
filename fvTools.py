@@ -20,6 +20,35 @@ def misPolarizeAlleleCounts(ac, pMisPol):
             mapping.append([0, 1]) #no swap
     return ac.map_alleles(mapping)
 
+def calledGenoFracAtSite(genosAtSite):
+    calledCount, missingCount = 0, 0
+    for genoForIndiv in genosAtSite:
+        missing = False
+        for allele in genoForIndiv:
+            if allele < 0:
+                missing = True
+        if missing:
+            missingCount += 1
+        else:
+            calledCount += 1
+    return calledCount/float(missingCount + calledCount)
+
+def isHaploidVcfGenoArray(genos):
+    return all(0 > genos[:,:,1].flat)
+
+def diploidizeGenotypeArray(genos):
+    numSnps, numSamples, numAlleles = genos.shape
+    if numSamples % 2 != 0:
+        sys.stderr.write("Diploidizing an odd-numbered sample. The last genome will be truncated.\n")
+
+    newGenos = []
+    for i in range(numSnps):
+        currSnp = []
+        for j in range(0, numSamples, 2):
+            currSnp.append([genos[i,j,0] , genos[i,j+1,0]])
+        newGenos.append(currSnp)
+    return allel.GenotypeArray(newGenos)
+
 #contains some bits modified from scikit-allel by Alistair Miles
 def readStatsDafsComputeStandardizationBins(statAndDafFileName, nBins=50, pMisPol=0.0):
     stats = {}
@@ -136,12 +165,12 @@ def polarizeSnps(unmasked, positions, refAlleles, altAlleles, ancArm):
     assert len(mapping) == len(positions)
     return mapping, unmasked
 
-def getAccessibilityInWins(isAccessibleSub, winLen, subWinLen, cutoff):
+def getAccessibilityInWins(isAccessibleArm, winLen, subWinLen, cutoff):
     wins = []
     badWinCount = 0
-    lastWinEnd = len(isAccessibleSub) - len(isAccessibleSub) % winLen
+    lastWinEnd = len(isAccessibleArm) - len(isAccessibleArm) % winLen
     for i in range(0, lastWinEnd, winLen):
-        currWin = isAccessibleSub[i:i+winLen]
+        currWin = isAccessibleArm[i:i+winLen]
         goodWin = True
         for subWinStart in range(0, winLen, subWinLen):
             unmaskedFrac = currWin[subWinStart:subWinStart+subWinLen].count(True)/float(subWinLen)
@@ -210,13 +239,13 @@ def readMaskAndAncDataForTraining(maskFileName, ancFileName, totalPhysLen, subWi
         chrArmsForMasking = sorted(maskData)
     for currChr in chrArmsForMasking:
         assert len(maskData[currChr]) == len(ancData[currChr])
-        isAccessibleSub = []
+        isAccessibleArm = []
         for i in range(len(maskData[currChr])):
             if "N" in [ancData[currChr][i], maskData[currChr][i]]:
-                isAccessibleSub.append(False)
+                isAccessibleArm.append(False)
             else:
-                isAccessibleSub.append(True)
-        windowedAccessibility = getAccessibilityInWins(isAccessibleSub, totalPhysLen, subWinLen, cutoff)
+                isAccessibleArm.append(True)
+        windowedAccessibility = getAccessibilityInWins(isAccessibleArm, totalPhysLen, subWinLen, cutoff)
         if windowedAccessibility:
             isAccessible += windowedAccessibility
     if shuffle:
@@ -228,9 +257,49 @@ def readMaskAndAncDataForTraining(maskFileName, ancFileName, totalPhysLen, subWi
     assert count
     return isAccessible
 
-def readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMasking, shuffle=True, cutoff=0.25):
-    isAccessible = []
-    isAccessibleSub = []
+def getGenoMaskInfoInWins(isAccessibleArm, genos, positions, positions2SnpIndices, totalPhysLen, subWinLen, cutoff):
+    windowedAcc, windowedGenoMask = [], []
+    badWinCount = 0
+    lastWinEnd = len(isAccessibleArm) - len(isAccessibleArm) % winLen
+    posIdx = 0
+    snpIndicesInWins = []
+    for i in range(0, lastWinEnd, winLen):
+        firstPos = i+1
+        lastPos = i+winLen
+        snpIndicesInWin = []
+        assert positions[posIdx] >= firstPos
+        while positions[posIdx] <= lastPos:
+            if isAccessibleArm[positions[posIdx]-1]:
+                snpIndicesInWin.append(posIdx)
+            posIdx += 1
+        snpIndicesInWins.append(snpIndicesInWin)
+    for i in range(0, lastWinEnd, winLen):
+        currWin = isAccessibleArm[i:i+winLen]
+        currGenos = genos[snpIndicesInWins[i]]
+        goodWin = True
+        for subWinStart in range(0, winLen, subWinLen):
+            unmaskedFrac = currWin[subWinStart:subWinStart+subWinLen].count(True)/float(subWinLen)
+            if unmaskedFrac < cutoff:
+                goodWin = False
+        if goodWin:
+            windowedAcc.append(currWin)
+            windowedGenoMask.append(currGenos)
+        else:
+            badWinCount += 1
+    return windowedAcc, windowedGenoMask
+
+def readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMasking, shuffle=True, cutoff=0.25, genoCutoff=0.75, vcfForMaskFileName=None, sampleToPopFileName=None, pop=None):
+    isAccessible, isAccessibleArm = [], []
+    genoMaskInfo, genoMaskInfoArm = [], []
+
+    if vcfForMaskFileName:
+        vcfFile = allel.read_vcf(vcfForMaskFileName)
+        chroms = vcfFile["variants/CHROM"]
+        samples = vcfFile["samples"]
+        assert not sampleToPopFileName.lower() in ["none", "false"]
+        sampleToPop = readSampleToPopFile(sampleToPopFileName)
+        sampleIndicesToKeep = [i for i in range(len(samples)) if sampleToPop.get(samples[i], "popNotFound!") == pop]
+
     if maskFileName.endswith(".gz"):
         fopen = gzip.open
     else:
@@ -239,35 +308,81 @@ def readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMas
         for line in maskFile:
             if line.startswith(">"):
                 currChr = line[1:].strip()
-                if isAccessibleSub:
-                    windowedAccessibility = getAccessibilityInWins(isAccessibleSub, totalPhysLen, subWinLen, cutoff)
-                    if windowedAccessibility:
-                        isAccessible += windowedAccessibility
+
+                if vcfForMaskFileName:
+                    rawgenos = np.take(vcfFile["calldata/GT"], [i for i in range(len(chroms)) if chroms[i] == chrArm], axis=0)
+                    genos = allel.GenotypeArray(rawgenos)
+                    positions = np.extract(chroms == currChr, vcfFile["variants/POS"])
+                    positions2SnpIndices = {}
+                    for i in range(len(positions)):
+                        positions2SnpIndices[positions[i]] = i
+
+                if isAccessibleArm:
+                    if vcfForMaskFileName:
+                        windowedAccessibility, windowedGenoMask = getGenoMaskInfoInWins(isAccessibleArm, genos, positions, positions2SnpIndices, totalPhysLen, subWinLen, cutoff)
+                        if windowedAccessibility:
+                            isAccessible += windowedAccessibility
+                            genoMaskInfo += windowedGenoMask
+                    else:
+                        windowedAccessibility = getAccessibilityInWins(isAccessibleArm, totalPhysLen, subWinLen, cutoff)
+                        if windowedAccessibility:
+                            isAccessible += windowedAccessibility
                 if 'all' in chrArmsForMasking or currChr in chrArmsForMasking:
                     readingMasks = True
                 else:
                     readingMasks = False
-                isAccessibleSub = []
+                isAccessibleArm = []
             else:
                 if readingMasks:
                     for char in line.strip().upper():
-                        if char == 'N':
-                            isAccessibleSub.append(False)
+                        if char == 'N' or (vcfFileName and calledGenoFracAtSite(genos[positions2SnpIndices[pos]]) >= genoCutoff):
+                            isAccessibleArm.append(False)
                         else:
-                            isAccessibleSub.append(True)
-    if isAccessibleSub:
-        windowedAccessibility = getAccessibilityInWins(isAccessibleSub, totalPhysLen, subWinLen, cutoff)
-        if windowedAccessibility:
-            isAccessible += windowedAccessibility
+                            isAccessibleArm.append(True)
+    if isAccessibleArm:
+        if vcfForMaskFileName:
+            windowedAccessibility, windowedGenoMask = getGenoMaskInfoInWins(isAccessibleArm, genos, positions, positions2SnpIndices, totalPhysLen, subWinLen, cutoff, genoCutoff)
+            if windowedAccessibility:
+                isAccessible += windowedAccessibility
+                genoMaskInfo += windowedGenoMask
+        else:
+            windowedAccessibility = getAccessibilityInWins(isAccessibleArm, totalPhysLen, subWinLen, cutoff)
+            if windowedAccessibility:
+                isAccessible += windowedAccessibility
     if shuffle:
-        random.shuffle(isAccessible)
+        if vcfForMaskFileName:
+            indices = np.array([i for i in range(len(isAccessible))])
+            np.random.shuffle(indices)
+            isAccessible = isAccessible[indices]
+            genoMaskInfo = genoMaskInfo[indices]
+        else:
+            random.shuffle(isAccessible)
     count = 0
     for i in range(len(isAccessible)):
         assert len(isAccessible[i]) == totalPhysLen
         count += 1
     assert count
-    #med = np.median([isAccessible[x].count(True) for x in range(len(isAccessible))])
-    return isAccessible
+    if vcfForMaskFileName:
+        return isAccessible, genoMaskInfo
+    else:
+        return isAccessible
+
+def maskGeno():
+    return np.array([-1, -1])
+
+def isMaskedGeno(genoMask):
+    for allele in genoMask:
+        if allele < 0:
+            return True
+    return False
+
+def maskGenos(genosInWin, genoMaskForWin):
+    for snpIndex in range(len(genosInWin)):
+        maskIndex = len(genoMaskForWin)%snpIndex
+        for j in range(len(genosInWin[snpIndex])):
+            if isMaskedGeno(genoMaskForWin[maskIndex,j]):
+                genosInWin[snpIndex, j] = maskGeno()
+    return genosInWin
 
 def readMaskDataForScan(maskFileName, chrArm):
     isAccessible = []

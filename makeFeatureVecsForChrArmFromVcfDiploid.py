@@ -6,16 +6,21 @@ import sys
 import time
 from fvTools import *
 
-if not len(sys.argv) in [12,14]:
-    sys.exit("usage:\npython makeFeatureVecsForChrArmFromVcfDiploid.py chrArmFileName chrArm chrLen targetPop winSize numSubWins maskFileName unmaskedFracCutoff sampleToPopFileName statFileName outFileName [segmentStart segmentEnd]\n")
-if len(sys.argv) == 14:
-    chrArmFileName, chrArm, chrLen, targetPop, winSize, numSubWins, maskFileName, unmaskedFracCutoff, sampleToPopFileName, statFileName, outfn, segmentStart, segmentEnd = sys.argv[1:]
+if not len(sys.argv) in [13,15]:
+    sys.exit("usage:\npython makeFeatureVecsForChrArmFromVcfDiploid.py vcfFileName chrArm chrLen targetPop winSize numSubWins maskFileName unmaskedFracCutoff unmaskedGenoFracCutoff sampleToPopFileName statFileName outFileName [segmentStart segmentEnd]\n")
+if len(sys.argv) == 15:
+    vcfFileName, chrArm, chrLen, targetPop, winSize, numSubWins, maskFileName, unmaskedFracCutoff, unmaskedGenoFracCutoff, sampleToPopFileName, statFileName, outfn, segmentStart, segmentEnd = sys.argv[1:]
     segmentStart, segmentEnd = int(segmentStart), int(segmentEnd)
 else:
-    chrArmFileName, chrArm, chrLen, targetPop, winSize, numSubWins, maskFileName, unmaskedFracCutoff, sampleToPopFileName, statFileName, outfn = sys.argv[1:]
+    vcfFileName, chrArm, chrLen, targetPop, winSize, numSubWins, maskFileName, unmaskedFracCutoff, unmaskedGenoFracCutoff, sampleToPopFileName, statFileName, outfn = sys.argv[1:]
     segmentStart = None
 
 unmaskedFracCutoff = float(unmaskedFracCutoff)
+if unmaskedFracCutoff < 0.0 or unmaskedFracCutoff > 1.0:
+    sys.exit("unmaskedFracCutoff=%s but must be within [0, 1]. AAAAARRRRGHHHHHH!!!\n" %(unmaskedFracCutoff))
+unmaskedGenoFracCutoff = float(unmaskedGenoFracCutoff)
+if unmaskedGenoFracCutoff < 0.0 or unmaskedGenoFracCutoff > 1.0:
+    sys.exit("unmaskedGenoFracCutoff=%s but must be within [0, 1]. AAAAARRRRGHHHHHH!!!\n" %(unmaskedGenoFracCutoff))
 chrLen, winSize, numSubWins = int(chrLen), int(winSize), int(numSubWins)
 assert winSize % numSubWins == 0 and numSubWins > 1
 subWinSize = int(winSize/numSubWins)
@@ -54,9 +59,9 @@ def readSampleToPopFile(sampleToPopFileName):
             table[sample] = pop
     return table
 
-chrArmFile = allel.read_vcf(chrArmFileName)
-chroms = chrArmFile["variants/CHROM"]
-positions = np.extract(chroms == chrArm, chrArmFile["variants/POS"])
+vcfFile = allel.read_vcf(vcfFileName)
+chroms = vcfFile["variants/CHROM"]
+positions = np.extract(chroms == chrArm, vcfFile["variants/POS"])
 
 if maskFileName.lower() in ["none", "false"]:
     sys.stderr.write("Warning: a mask.fa file for the chr arm with all masked sites N'ed out is strongly recommended" +
@@ -64,34 +69,36 @@ if maskFileName.lower() in ["none", "false"]:
     unmasked = [True] * chrLen
 else:
     unmasked = readMaskDataForScan(maskFileName, chrArm)
+    print(len(unmasked), chrLen)
     assert len(unmasked) == chrLen
 
 if statFileName.lower() in ["none", "false"]:
     statFileName = None
 
-samples = chrArmFile["samples"]
+samples = vcfFile["samples"]
 if not sampleToPopFileName.lower() in ["none", "false"]:
     sampleToPop = readSampleToPopFile(sampleToPopFileName)
     sampleIndicesToKeep = [i for i in range(len(samples)) if sampleToPop.get(samples[i], "popNotFound!") == targetPop]
 else:
     sampleIndicesToKeep = [i for i in range(len(samples))]
-rawgenos = np.take(chrArmFile["calldata/GT"], [i for i in range(len(chroms)) if chroms[i] == chrArm], axis=0)
-genos = allel.GenotypeArray(rawgenos)
-refAlleles = np.extract(chroms == chrArm, chrArmFile['variants/REF'])
-altAlleles = np.extract(chroms == chrArm, chrArmFile['variants/ALT'])
+rawgenos = np.take(vcfFile["calldata/GT"], [i for i in range(len(chroms)) if chroms[i] == chrArm], axis=0)
+genos = allel.GenotypeArray(rawgenos).subset(sel1=sampleIndicesToKeep)
+
 if segmentStart != None:
     snpIndicesToKeep = [i for i in range(len(positions)) if segmentStart <= positions[i] <= segmentEnd]
     positions = [positions[i] for i in snpIndicesToKeep]
-    refAlleles = [refAlleles[i] for i in snpIndicesToKeep]
-    altAlleles = [altAlleles[i] for i in snpIndicesToKeep]
     genos = allel.GenotypeArray(genos.subset(sel0=snpIndicesToKeep))
-genos = allel.GenotypeArray(genos.subset(sel1=sampleIndicesToKeep))
+
+if isHaploidVcfGenoArray(genos):
+    sys.stderr.write("Detected haploid input. Converting into diploid individuals (combining haplotypes in order).\n")
+    genos = diploidizeGenotypeArray(genos)
+
 alleleCounts = genos.count_alleles()
 
 #remove all but mono/biallelic unmasked sites
 isBiallelic = alleleCounts.is_biallelic()
 for i in range(len(isBiallelic)):
-    if not isBiallelic[i]:
+    if not (isBiallelic[i] and calledGenoFracAtSite(genos[i]) >= unmaskedGenoFracCutoff):
         unmasked[positions[i]-1] = False
 snpIndicesToKeep = [i for i in range(len(positions)) if unmasked[positions[i]-1]]
 genos = allel.GenotypeArray(genos.subset(sel0=snpIndicesToKeep))
