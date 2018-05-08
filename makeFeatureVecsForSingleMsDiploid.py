@@ -6,7 +6,7 @@ from msTools import *
 from fvTools import *
 import time
 
-trainingDataFileName, totalPhysLen, numSubWins, maskFileName, chrArmsForMasking, unmaskedFracCutoff, outStatsDir, fvecFileName = sys.argv[1:]
+trainingDataFileName, totalPhysLen, numSubWins, maskFileName, vcfForMaskFileName, popForMask, sampleToPopFileName, unmaskedGenoFracCutoff, chrArmsForMasking, unmaskedFracCutoff, outStatsDir, fvecFileName = sys.argv[1:]
 totalPhysLen = int(totalPhysLen)
 numSubWins = int(numSubWins)
 subWinLen = totalPhysLen//numSubWins
@@ -17,14 +17,27 @@ sys.stderr.write("file name='%s'" %(trainingDataFileName))
 trainingDataFileObj, sampleSize, numInstances = openMsOutFileForSequentialReading(trainingDataFileName)
 
 if maskFileName.lower() in ["none", "false"]:
-    sys.stderr.write("maskFileName='%s': not doing any masking!\n" %(maskFileName))
+    sys.stderr.write("maskFileName='%s': not masking any sites!\n" %(maskFileName))
     maskFileName = False
     unmaskedFracCutoff = 1.0
 else:
     chrArmsForMasking = chrArmsForMasking.split(",")
     unmaskedFracCutoff = float(unmaskedFracCutoff)
-    if unmaskedFracCutoff > 1.0:
+    if unmaskedFracCutoff > 1.0 or unmaskedFracCutoff < 0.0:
         sys.exit("unmaskedFracCutoff must lie within [0, 1]. AAARRRRGGGGHHHHH!!!!\n")
+
+if vcfForMaskFileName.lower() in ["none", "false"]:
+    sys.stderr.write("vcfForMaskFileName='%s': not masking any genotypes!" %(vcfForMaskFileName))
+    vcfForMaskFileName = False
+else:
+    if not maskFileName:
+        sys.exit("Cannot mask genotypes without also supplying a file for masking entire sites (can use reference genome with Ns if desired). AAARRRGHHHHH!!!!!!\n")
+    if sampleToPopFileName.lower() in ["none", "false"] or popForMask.lower() in ["none", "false"]:
+        sampleToPopFileName = None
+        sys.stderr.write("No sampleToPopFileName specified. Using all individuals for masking genotypes.\n")
+    unmaskedGenoFracCutoff = float(unmaskedGenoFracCutoff)
+    if unmaskedGenoFracCutoff > 1.0 or unmaskedGenoFracCutoff < 0.0:
+        sys.exit("unmaskedGenoFracCutoff must lie within [0, 1]. AAARRRRGGGGHHHHH!!!!\n")
 
 def getSubWinBounds(subWinLen, totalPhysLen): # get inclusive subwin bounds
     subWinStart = 1
@@ -45,7 +58,11 @@ if not maskFileName:
     unmasked = [True] * totalPhysLen
 else:
     drawWithReplacement = False
-    maskData = readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMasking, shuffle=True, cutoff=unmaskedFracCutoff) 
+    sys.stderr.write("reading masking data...")
+    maskData, genoMaskData = readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMasking, shuffle=True, cutoff=unmaskedFracCutoff,
+                                                     genoCutoff=unmaskedGenoFracCutoff, vcfForMaskFileName=vcfForMaskFileName, pop=popForMask,
+                                                     sampleToPopFileName=sampleToPopFileName)
+    sys.stderr.write("done!\n")
     if len(maskData) < numInstances:
         sys.stderr.write("Warning: didn't get enough windows from masked data (needed %d; got %d); will draw with replacement!!\n" %(numInstances, len(maskData)))
         drawWithReplacement = True
@@ -86,9 +103,10 @@ for instanceIndex in range(numInstances):
     haps = allel.HaplotypeArray(hapArrayIn, dtype='i1')
     if maskFileName:
         if drawWithReplacement:
-            unmasked = random.choice(maskData)
+            randIndex = random.choice(len(maskData))
+            unmasked = maskData[randIndex], genoMaskData[randIndex]
         else:
-            unmasked = maskData[instanceIndex]
+            unmasked = maskData[instanceIndex], genoMaskData[instanceIndex]
         assert len(unmasked) == totalPhysLen
     genos = haps.to_genotypes(ploidy=2)
     unmaskedSnpIndices = [i for i in range(len(positionArray)) if unmasked[positionArray[i]-1]]
@@ -100,12 +118,10 @@ for instanceIndex in range(numInstances):
                 appendStatValsForMonomorphic(statName, statVals, instanceIndex, subWinIndex)
     else:
         positionArrayUnmaskedOnly = [positionArray[i] for i in unmaskedSnpIndices]
+        preMaskCount = np.sum(genos.count_alleles())
+        genos = maskGenos(genos.subset(sel0=unmaskedSnpIndices), genoMaskData[instanceIndex])
         ac = genos.count_alleles()
-        alleleCountsUnmaskedOnly = allel.AlleleCountsArray(np.array([ac[i] for i in unmaskedSnpIndices]))
-        sampleSizes = [sum(x) for x in alleleCountsUnmaskedOnly]
-        assert len(set(sampleSizes)) == 1 and sampleSizes[0] == sampleSize
-        dafs = alleleCountsUnmaskedOnly[:,1]/float(sampleSizes[0])
-        unmaskedGenos = genos.subset(sel0=unmaskedSnpIndices)
+        sys.stderr.write("%d genotypes masked for rep %d\n" %(preMaskCount - np.sum(ac), instanceIndex))
         for statName in statNames:
             statVals[statName].append([])
         for subWinIndex in range(numSubWins):
