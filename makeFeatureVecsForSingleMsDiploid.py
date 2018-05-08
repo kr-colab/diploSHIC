@@ -118,10 +118,11 @@ for instanceIndex in range(numInstances):
                 appendStatValsForMonomorphic(statName, statVals, instanceIndex, subWinIndex)
     else:
         positionArrayUnmaskedOnly = [positionArray[i] for i in unmaskedSnpIndices]
-        preMaskCount = np.sum(genos.count_alleles())
-        genos = maskGenos(genos.subset(sel0=unmaskedSnpIndices), genoMaskData[instanceIndex])
-        ac = genos.count_alleles()
-        sys.stderr.write("%d genotypes masked for rep %d\n" %(preMaskCount - np.sum(ac), instanceIndex))
+        if maskFileName:
+            preMaskCount = np.sum(genos.count_alleles())
+            genos = maskGenos(genos.subset(sel0=unmaskedSnpIndices), genoMaskData[instanceIndex])
+            ac = genos.count_alleles()
+            sys.stderr.write("%d genotypes masked for rep %d\n" %(preMaskCount - np.sum(ac), instanceIndex))
         for statName in statNames:
             statVals[statName].append([])
         for subWinIndex in range(numSubWins):
