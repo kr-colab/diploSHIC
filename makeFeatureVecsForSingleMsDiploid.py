@@ -27,7 +27,7 @@ else:
         sys.exit("unmaskedFracCutoff must lie within [0, 1]. AAARRRRGGGGHHHHH!!!!\n")
 
 if vcfForMaskFileName.lower() in ["none", "false"]:
-    sys.stderr.write("vcfForMaskFileName='%s': not masking any genotypes!" %(vcfForMaskFileName))
+    sys.stderr.write("vcfForMaskFileName='%s': not masking any genotypes!\n" %(vcfForMaskFileName))
     vcfForMaskFileName = False
 else:
     if not maskFileName:
@@ -117,12 +117,14 @@ for instanceIndex in range(numInstances):
             for statName in statNames:
                 appendStatValsForMonomorphic(statName, statVals, instanceIndex, subWinIndex)
     else:
-        positionArrayUnmaskedOnly = [positionArray[i] for i in unmaskedSnpIndices]
         if maskFileName:
             preMaskCount = np.sum(genos.count_alleles())
             genos = maskGenos(genos.subset(sel0=unmaskedSnpIndices), genoMaskData[instanceIndex])
-            ac = genos.count_alleles()
-            sys.stderr.write("%d genotypes masked for rep %d\n" %(preMaskCount - np.sum(ac), instanceIndex))
+            alleleCountsUnmaskedOnly = genos.count_alleles()
+            sys.stderr.write("%d genotypes masked for rep %d\n" %(preMaskCount - np.sum(alleleCountsUnmaskedOnly), instanceIndex))
+        else:
+            alleleCountsUnmaskedOnly = genos.count_alleles()
+        positionArrayUnmaskedOnly = [positionArray[i] for i in unmaskedSnpIndices]
         for statName in statNames:
             statVals[statName].append([])
         for subWinIndex in range(numSubWins):

@@ -257,15 +257,16 @@ def readMaskAndAncDataForTraining(maskFileName, ancFileName, totalPhysLen, subWi
     assert count
     return isAccessible
 
-def getGenoMaskInfoInWins(isAccessibleArm, genos, positions, positions2SnpIndices, totalPhysLen, subWinLen, cutoff):
+def getGenoMaskInfoInWins(isAccessibleArm, genos, positions, positions2SnpIndices, winLen, subWinLen, cutoff, genoCutoff):
     windowedAcc, windowedGenoMask = [], []
     badWinCount = 0
     lastWinEnd = len(isAccessibleArm) - len(isAccessibleArm) % winLen
     posIdx = 0
     snpIndicesInWins = []
-    for i in range(0, lastWinEnd, winLen):
-        firstPos = i+1
-        lastPos = i+winLen
+    print("geno/position info: %s, %s" %(genos.shape, len(positions)))
+    for winOffset in range(0, lastWinEnd, winLen):
+        firstPos = winOffset+1
+        lastPos = winOffset+winLen
         snpIndicesInWin = []
         assert positions[posIdx] >= firstPos
         while positions[posIdx] <= lastPos:
@@ -273,9 +274,11 @@ def getGenoMaskInfoInWins(isAccessibleArm, genos, positions, positions2SnpIndice
                 snpIndicesInWin.append(posIdx)
             posIdx += 1
         snpIndicesInWins.append(snpIndicesInWin)
-    for i in range(0, lastWinEnd, winLen):
-        currWin = isAccessibleArm[i:i+winLen]
-        currGenos = genos[snpIndicesInWins[i]]
+
+    winIndex = 0
+    for winOffset in range(0, lastWinEnd, winLen):
+        currWin = isAccessibleArm[winOffset:winOffset+winLen]
+        currGenos = genos.subset(sel0=snpIndicesInWins[winIndex])
         goodWin = True
         for subWinStart in range(0, winLen, subWinLen):
             unmaskedFrac = currWin[subWinStart:subWinStart+subWinLen].count(True)/float(subWinLen)
@@ -286,40 +289,60 @@ def getGenoMaskInfoInWins(isAccessibleArm, genos, positions, positions2SnpIndice
             windowedGenoMask.append(currGenos)
         else:
             badWinCount += 1
+        winIndex += 1
     return windowedAcc, windowedGenoMask
 
-def readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMasking, shuffle=True, cutoff=0.25, genoCutoff=0.75, vcfForMaskFileName=None, sampleToPopFileName=None, pop=None):
-    isAccessible, isAccessibleArm = [], []
-    genoMaskInfo, genoMaskInfoArm = [], []
+def readSampleToPopFile(sampleToPopFileName):
+    table = {}
+    with open(sampleToPopFileName) as sampleToPopFile:
+        for line in sampleToPopFile:
+            sample, pop = line.strip().split()
+            table[sample] = pop
+    return table
 
+def extractGenosAndPositionsForArm(vcfFile, chroms, currChr, sampleIndicesToKeep):
+    print("extracting vcf info for arm %s" %(currChr))
+
+    genos = allel.GenotypeArray(vcfFile["calldata/GT"]).subset(sel1=sampleIndicesToKeep)
+    positions = np.extract(chroms == currChr, vcfFile["variants/POS"])
+    genos = allel.GenotypeArray(genos.subset(sel0=range(len(positions))))
+
+    positions2SnpIndices = {}
+    for i in range(len(positions)):
+        positions2SnpIndices[positions[i]] = i
+
+    assert len(positions) == len(positions2SnpIndices) and len(positions) == len(genos)
+    return genos, positions, positions2SnpIndices, genos.count_alleles().is_biallelic()
+
+def readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMasking, shuffle=True, cutoff=0.25, genoCutoff=0.75, vcfForMaskFileName=None, sampleToPopFileName=None, pop=None):
     if vcfForMaskFileName:
+        print("reading geno mask info from %s" %(vcfForMaskFileName))
         vcfFile = allel.read_vcf(vcfForMaskFileName)
+        print("done with read")
         chroms = vcfFile["variants/CHROM"]
         samples = vcfFile["samples"]
-        assert not sampleToPopFileName.lower() in ["none", "false"]
-        sampleToPop = readSampleToPopFile(sampleToPopFileName)
-        sampleIndicesToKeep = [i for i in range(len(samples)) if sampleToPop.get(samples[i], "popNotFound!") == pop]
-
+        if sampleToPopFileName:
+            sampleToPop = readSampleToPopFile(sampleToPopFileName)
+            sampleIndicesToKeep = [i for i in range(len(samples)) if sampleToPop.get(samples[i], "popNotFound!") == pop]
+        else:
+            sampleIndicesToKeep = [i for i in range(len(samples))]
     if maskFileName.endswith(".gz"):
         fopen = gzip.open
     else:
         fopen = open
+
+    genosChecked = 0
+    print("reading %s" %(maskFileName))
+    readingMasks = False
+    isAccessible, isAccessibleArm = [], []
+    genoMaskInfo  = []
     with fopen(maskFileName,'rt') as maskFile:
         for line in maskFile:
             if line.startswith(">"):
-                currChr = line[1:].strip()
-
-                if vcfForMaskFileName:
-                    rawgenos = np.take(vcfFile["calldata/GT"], [i for i in range(len(chroms)) if chroms[i] == chrArm], axis=0)
-                    genos = allel.GenotypeArray(rawgenos)
-                    positions = np.extract(chroms == currChr, vcfFile["variants/POS"])
-                    positions2SnpIndices = {}
-                    for i in range(len(positions)):
-                        positions2SnpIndices[positions[i]] = i
-
-                if isAccessibleArm:
+                if readingMasks and len(isAccessibleArm) >= totalPhysLen:
                     if vcfForMaskFileName:
-                        windowedAccessibility, windowedGenoMask = getGenoMaskInfoInWins(isAccessibleArm, genos, positions, positions2SnpIndices, totalPhysLen, subWinLen, cutoff)
+                        print("processing sites and genos for %s" %(currChr))
+                        windowedAccessibility, windowedGenoMask = getGenoMaskInfoInWins(isAccessibleArm, genos, positions, positions2SnpIndices, totalPhysLen, subWinLen, cutoff, genoCutoff)
                         if windowedAccessibility:
                             isAccessible += windowedAccessibility
                             genoMaskInfo += windowedGenoMask
@@ -327,20 +350,35 @@ def readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMas
                         windowedAccessibility = getAccessibilityInWins(isAccessibleArm, totalPhysLen, subWinLen, cutoff)
                         if windowedAccessibility:
                             isAccessible += windowedAccessibility
+
+                currChr = line[1:].strip()
+                currPos = 0
+                print("chrom: " + currChr)
                 if 'all' in chrArmsForMasking or currChr in chrArmsForMasking:
                     readingMasks = True
                 else:
                     readingMasks = False
                 isAccessibleArm = []
+                if vcfForMaskFileName and readingMasks:
+                    print("checking geno mask info from %s" %(vcfForMaskFileName))
+                    genos, positions, positions2SnpIndices, isBiallelic = extractGenosAndPositionsForArm(vcfFile, chroms, currChr, sampleIndicesToKeep)
             else:
                 if readingMasks:
                     for char in line.strip().upper():
-                        if char == 'N' or (vcfFileName and calledGenoFracAtSite(genos[positions2SnpIndices[pos]]) >= genoCutoff):
+                        if char == 'N':
                             isAccessibleArm.append(False)
+                        elif vcfForMaskFileName and currPos in positions2SnpIndices:
+                            genosChecked += 1
+                            if calledGenoFracAtSite(genos[positions2SnpIndices[currPos]]) >= genoCutoff and isBiallelic[positions2SnpIndices[currPos]]:
+                                isAccessibleArm.append(True)
+                            else:
+                                isAccessibleArm.append(False)
                         else:
                             isAccessibleArm.append(True)
-    if isAccessibleArm:
+                        currPos += 1
+    if readingMasks and len(isAccessibleArm) >= totalPhysLen:
         if vcfForMaskFileName:
+            print("processing sites and genos for %s" %(currChr))
             windowedAccessibility, windowedGenoMask = getGenoMaskInfoInWins(isAccessibleArm, genos, positions, positions2SnpIndices, totalPhysLen, subWinLen, cutoff, genoCutoff)
             if windowedAccessibility:
                 isAccessible += windowedAccessibility
@@ -353,14 +391,16 @@ def readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMas
         if vcfForMaskFileName:
             indices = np.array([i for i in range(len(isAccessible))])
             np.random.shuffle(indices)
-            isAccessible = isAccessible[indices]
-            genoMaskInfo = genoMaskInfo[indices]
+            isAccessible = [isAccessible[i] for i in indices]
+            genoMaskInfo = [genoMaskInfo[i] for i in indices]
         else:
             random.shuffle(isAccessible)
     count = 0
     for i in range(len(isAccessible)):
         assert len(isAccessible[i]) == totalPhysLen
         count += 1
+    print(len(isAccessible),count)
+    print("checked genotypes at %d sites" %(genosChecked))
     assert count
     if vcfForMaskFileName:
         return isAccessible, genoMaskInfo
@@ -378,7 +418,7 @@ def isMaskedGeno(genoMask):
 
 def maskGenos(genosInWin, genoMaskForWin):
     for snpIndex in range(len(genosInWin)):
-        maskIndex = len(genoMaskForWin)%snpIndex
+        maskIndex = len(genoMaskForWin)%snpIndex#if we run out of snps we just bring it around for another pass!
         for j in range(len(genosInWin[snpIndex])):
             if isMaskedGeno(genoMaskForWin[maskIndex,j]):
                 genosInWin[snpIndex, j] = maskGeno()
