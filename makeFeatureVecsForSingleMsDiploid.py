@@ -96,42 +96,49 @@ for statName in statNames:
     statVals[statName] = []
 start = time.clock()
 numInstancesDone = 0
+sys.stderr.write("ready to process sim reps. here we go!\n")
 for instanceIndex in range(numInstances):
+    sys.stderr.write("starting rep %d of %d\n" %(instanceIndex, numInstances))
     hapArrayIn, positionArray = readNextMsRepToHaplotypeArrayIn(trainingDataFileObj, sampleSize, totalPhysLen)
 
-    snpIndicesInSubWins = getSnpIndicesInSubWins(subWinBounds, positionArray)
     haps = allel.HaplotypeArray(hapArrayIn, dtype='i1')
     if maskFileName:
         if drawWithReplacement:
-            randIndex = random.choice(len(maskData))
-            unmasked = maskData[randIndex], genoMaskData[randIndex]
+            randIndex = random.randint(0, len(maskData)-1)
+            unmasked, genoMasks = maskData[randIndex], genoMaskData[randIndex]
         else:
-            unmasked = maskData[instanceIndex], genoMaskData[instanceIndex]
+            unmasked, genoMasks = maskData[instanceIndex], genoMaskData[instanceIndex]
         assert len(unmasked) == totalPhysLen
     genos = haps.to_genotypes(ploidy=2)
     unmaskedSnpIndices = [i for i in range(len(positionArray)) if unmasked[positionArray[i]-1]]
     if len(unmaskedSnpIndices) == 0:
+        sys.stderr.write("no snps for rep %d\n" %(instanceIndex))
         for statName in statNames:
             statVals[statName].append([])
         for subWinIndex in range(numSubWins):
             for statName in statNames:
                 appendStatValsForMonomorphic(statName, statVals, instanceIndex, subWinIndex)
     else:
+        sys.stderr.write("processing snps for rep %d\n" %(instanceIndex))
         if maskFileName:
             preMaskCount = np.sum(genos.count_alleles())
-            genos = maskGenos(genos.subset(sel0=unmaskedSnpIndices), genoMaskData[instanceIndex])
+            sys.stderr.write("%d snps in the masking window for rep %d\n" %(len(genoMasks), instanceIndex))
+            genos = maskGenos(genos.subset(sel0=unmaskedSnpIndices), genoMasks)
             alleleCountsUnmaskedOnly = genos.count_alleles()
-            sys.stderr.write("%d genotypes masked for rep %d\n" %(preMaskCount - np.sum(alleleCountsUnmaskedOnly), instanceIndex))
+            maskedCount = preMaskCount - np.sum(alleleCountsUnmaskedOnly)
+            sys.stderr.write("%d of %d genotypes (%.2f%%) masked for rep %d\n" %(maskedCount, preMaskCount, 100*maskedCount/preMaskCount, instanceIndex))
         else:
             alleleCountsUnmaskedOnly = genos.count_alleles()
         positionArrayUnmaskedOnly = [positionArray[i] for i in unmaskedSnpIndices]
+        snpIndicesInSubWins = getSnpIndicesInSubWins(subWinBounds, positionArrayUnmaskedOnly)
         for statName in statNames:
             statVals[statName].append([])
         for subWinIndex in range(numSubWins):
             subWinStart, subWinEnd = subWinBounds[subWinIndex]
             unmaskedFrac = unmasked[subWinStart-1:subWinEnd].count(True)/float(subWinLen)
             assert unmaskedFrac >= unmaskedFracCutoff
-            snpIndicesInSubWinUnmasked = [x for x in snpIndicesInSubWins[subWinIndex] if unmasked[positionArray[x]-1]]
+            snpIndicesInSubWinUnmasked = snpIndicesInSubWins[subWinIndex]
+            sys.stderr.write("examining subwindow %d which has %d unmasked SNPs\n" %(subWinIndex, len(snpIndicesInSubWinUnmasked)))
             if len(snpIndicesInSubWinUnmasked) > 0:
                 genosInSubWin = genos.subset(sel0=snpIndicesInSubWinUnmasked)
                 for statName in statNames:
@@ -141,6 +148,7 @@ for instanceIndex in range(numInstances):
                 for statName in statNames:
                     appendStatValsForMonomorphic(statName, statVals, instanceIndex, subWinIndex)
     numInstancesDone += 1
+    sys.stderr.write("finished %d reps after %f seconds\n" %(numInstancesDone, time.clock()-start))
 
 if numInstancesDone != numInstances:
     sys.exit("Expected %d reps but only processed %d. Perhaps we are using malformed simulation output!\n" %(numInstancesDone, numInstances))
