@@ -263,15 +263,18 @@ def getGenoMaskInfoInWins(isAccessibleArm, genos, positions, positions2SnpIndice
     lastWinEnd = len(isAccessibleArm) - len(isAccessibleArm) % winLen
     posIdx = 0
     snpIndicesInWins = []
-    #sys.stderr.write("about to get geno masks from arm; genos shape: %s, num snps: %s\n" %(genos.shape, len(positions)))
+    sys.stderr.write("about to get geno masks from arm; len: %d, genos shape: %s, num snps: %d\n" %(len(isAccessibleArm), genos.shape, len(positions)))
     for winOffset in range(0, lastWinEnd, winLen):
         firstPos = winOffset+1
         lastPos = winOffset+winLen
         snpIndicesInWin = []
         assert positions[posIdx] >= firstPos
-        while positions[posIdx] <= lastPos:
+        while posIdx < len(positions) and positions[posIdx] <= lastPos:
             if isAccessibleArm[positions[posIdx]-1]:
-                snpIndicesInWin.append(posIdx)
+                if calledGenoFracAtSite(genos[posIdx]) >= genoCutoff:
+                    snpIndicesInWin.append(posIdx)
+                else:
+                    isAccessibleArm[positions[posIdx]-1] = False
             posIdx += 1
         snpIndicesInWins.append(snpIndicesInWin)
 
@@ -290,10 +293,10 @@ def getGenoMaskInfoInWins(isAccessibleArm, genos, positions, positions2SnpIndice
         else:
             badWinCount += 1
         winIndex += 1
-    #if windowedAcc:
-    #    sys.stderr.write("returning %d geno arrays, with an avg of %f snps\n" %(len(windowedGenoMask), sum([len(windowedGenoMask[i]) for i in range(len(windowedGenoMask))])/float(len(windowedGenoMask))))
-    #else:
-    #    sys.stderr.write("returning 0 geno arrays\n")
+    if windowedAcc:
+        sys.stderr.write("returning %d geno arrays, with an avg of %f snps\n" %(len(windowedGenoMask), sum([len(windowedGenoMask[i]) for i in range(len(windowedGenoMask))])/float(len(windowedGenoMask))))
+    else:
+        sys.stderr.write("returning 0 geno arrays\n")
     return windowedAcc, windowedGenoMask
 
 def readSampleToPopFile(sampleToPopFileName):
@@ -345,7 +348,7 @@ def readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMas
             if line.startswith(">"):
                 if readingMasks and len(isAccessibleArm) >= totalPhysLen:
                     if vcfForMaskFileName:
-                        #sys.stderr.write("processing sites and genos for %s\n" %(currChr))
+                        sys.stderr.write("processing sites and genos for %s\n" %(currChr))
                         windowedAccessibility, windowedGenoMask = getGenoMaskInfoInWins(isAccessibleArm, genos, positions, positions2SnpIndices, totalPhysLen, subWinLen, cutoff, genoCutoff)
                         if windowedAccessibility:
                             isAccessible += windowedAccessibility
