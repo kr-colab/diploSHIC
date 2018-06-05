@@ -109,6 +109,8 @@ for instanceIndex in range(numInstances):
         else:
             unmasked, genoMasks = maskData[instanceIndex], genoMaskData[instanceIndex]
         assert len(unmasked) == totalPhysLen
+    if haps.shape[1] % 2 == 1:
+        haps = haps[:,:-1]
     genos = haps.to_genotypes(ploidy=2)
     unmaskedSnpIndices = [i for i in range(len(positionArray)) if unmasked[positionArray[i]-1]]
     if len(unmaskedSnpIndices) == 0:

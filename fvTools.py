@@ -40,7 +40,7 @@ def diploidizeGenotypeArray(genos):
     numSnps, numSamples, numAlleles = genos.shape
     if numSamples % 2 != 0:
         sys.stderr.write("Diploidizing an odd-numbered sample. The last genome will be truncated.\n")
-
+        numSamples -= 1
     newGenos = []
     for i in range(numSnps):
         currSnp = []
@@ -264,6 +264,7 @@ def getGenoMaskInfoInWins(isAccessibleArm, genos, positions, positions2SnpIndice
     posIdx = 0
     snpIndicesInWins = []
     sys.stderr.write("about to get geno masks from arm; len: %d, genos shape: %s, num snps: %d\n" %(len(isAccessibleArm), genos.shape, len(positions)))
+    calledFracs = []
     for winOffset in range(0, lastWinEnd, winLen):
         firstPos = winOffset+1
         lastPos = winOffset+winLen
@@ -271,27 +272,30 @@ def getGenoMaskInfoInWins(isAccessibleArm, genos, positions, positions2SnpIndice
         assert positions[posIdx] >= firstPos
         while posIdx < len(positions) and positions[posIdx] <= lastPos:
             if isAccessibleArm[positions[posIdx]-1]:
-                if calledGenoFracAtSite(genos[posIdx]) >= genoCutoff:
+                calledFrac = calledGenoFracAtSite(genos[posIdx])
+                calledFracs.append(calledFrac)
+                if calledFrac >= genoCutoff:
                     snpIndicesInWin.append(posIdx)
                 else:
                     isAccessibleArm[positions[posIdx]-1] = False
             posIdx += 1
         snpIndicesInWins.append(snpIndicesInWin)
-
+    sys.stderr.write("min calledFrac: %g; max calledFrac: %g; mean: %g; median: %g\n" %(min(calledFracs), max(calledFracs), np.median(calledFracs), np.mean(calledFracs)))
     winIndex = 0
     for winOffset in range(0, lastWinEnd, winLen):
         currWin = isAccessibleArm[winOffset:winOffset+winLen]
-        currGenos = genos.subset(sel0=snpIndicesInWins[winIndex])
-        goodWin = True
-        for subWinStart in range(0, winLen, subWinLen):
-            unmaskedFrac = currWin[subWinStart:subWinStart+subWinLen].count(True)/float(subWinLen)
-            if unmaskedFrac < cutoff:
-                goodWin = False
-        if goodWin:
-            windowedAcc.append(currWin)
-            windowedGenoMask.append(currGenos)
-        else:
-            badWinCount += 1
+        if len(snpIndicesInWins[winIndex]) > 0:
+            currGenos = genos.subset(sel0=snpIndicesInWins[winIndex])
+            goodWin = True
+            for subWinStart in range(0, winLen, subWinLen):
+                unmaskedFrac = currWin[subWinStart:subWinStart+subWinLen].count(True)/float(subWinLen)
+                if unmaskedFrac < cutoff:
+                    goodWin = False
+            if goodWin:
+                windowedAcc.append(currWin)
+                windowedGenoMask.append(currGenos)
+            else:
+                badWinCount += 1
         winIndex += 1
     if windowedAcc:
         sys.stderr.write("returning %d geno arrays, with an avg of %f snps\n" %(len(windowedGenoMask), sum([len(windowedGenoMask[i]) for i in range(len(windowedGenoMask))])/float(len(windowedGenoMask))))
@@ -311,6 +315,9 @@ def extractGenosAndPositionsForArm(vcfFile, chroms, currChr, sampleIndicesToKeep
     #sys.stderr.write("extracting vcf info for arm %s\n" %(currChr))
 
     genos = allel.GenotypeArray(vcfFile["calldata/GT"]).subset(sel1=sampleIndicesToKeep)
+    if isHaploidVcfGenoArray(genos):
+        sys.stderr.write("Detected haploid input for %s. Converting into diploid individuals (combining haplotypes in order).\n" %(currChr))
+        genos = diploidizeGenotypeArray(genos)
     positions = np.extract(chroms == currChr, vcfFile["variants/POS"])
     genos = allel.GenotypeArray(genos.subset(sel0=range(len(positions))))
 
