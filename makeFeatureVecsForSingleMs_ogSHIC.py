@@ -115,7 +115,7 @@ for instanceIndex in range(numInstances):
         assert len(set(sampleSizes)) == 1 and sampleSizes[0] == sampleSize
         if pMisPol > 0:
             alleleCountsUnmaskedOnly = misPolarizeAlleleCounts(alleleCountsUnmaskedOnly, pMisPol)
-        dafs = alleleCountsUnmaskedOnly[:,1]/float(sampleSizes[0])
+        #dafs = alleleCountsUnmaskedOnly[:,1]/float(sampleSizes[0])
         unmaskedHaps = haps.subset(sel0=unmaskedSnpIndices)
         unmaskedGenos = genos.subset(sel0=unmaskedSnpIndices)
         precomputedStats = {}

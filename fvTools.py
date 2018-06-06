@@ -474,6 +474,13 @@ def normalizeFeatureVec(statVec):
             normStatVec.append(statVec[k]/statSum)
     return normStatVec
 
+def maxFDA(alleleCounts):
+    dafs = []
+    for i in range(len(alleleCounts)):
+        assert len(alleleCounts[i]) == 2
+        dafs.append(alleleCounts[i][1]/float(sum(alleleCounts[i])))
+    return max(dafs)
+
 def calcAndAppendStatVal(alleleCounts, snpLocs, statName, subWinStart, subWinEnd, statVals, instanceIndex, subWinIndex, hapsInSubWin, unmasked, precomputedStats):
     if statName == "tajD":
         statVals[statName][instanceIndex].append(allel.stats.diversity.tajima_d(alleleCounts, pos=snpLocs, start=subWinStart, stop=subWinEnd))
@@ -487,6 +494,8 @@ def calcAndAppendStatVal(alleleCounts, snpLocs, statName, subWinStart, subWinEnd
         statVals[statName][instanceIndex].append(statVals["thetaH"][instanceIndex][subWinIndex]-statVals["pi"][instanceIndex][subWinIndex])
     elif statName == "HapCount":
         statVals[statName][instanceIndex].append(len(hapsInSubWin.distinct()))
+    elif statName == "maxFDA":
+        statVals[statName][instanceIndex].append(maxFDA(alleleCounts))
     elif statName == "H1":
         h1, h12, h123, h21 = allel.stats.selection.garud_h(hapsInSubWin)
         statVals["H1"][instanceIndex].append(h1)
@@ -666,6 +675,8 @@ def appendStatValsForMonomorphic(statName, statVals, instanceIndex, subWinIndex)
     elif statName == "thetaH":
         statVals[statName][instanceIndex].append(0.0)
     elif statName == "fayWuH":
+        statVals[statName][instanceIndex].append(0.0)
+    elif statName == "maxFDA":
         statVals[statName][instanceIndex].append(0.0)
     elif statName == "nDiplos":
         statVals[statName][instanceIndex].append(1)
