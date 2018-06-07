@@ -319,14 +319,17 @@ def extractGenosAndPositionsForArm(vcfFile, chroms, currChr, sampleIndicesToKeep
         sys.stderr.write("Detected haploid input for %s. Converting into diploid individuals (combining haplotypes in order).\n" %(currChr))
         genos = diploidizeGenotypeArray(genos)
     positions = np.extract(chroms == currChr, vcfFile["variants/POS"])
-    genos = allel.GenotypeArray(genos.subset(sel0=range(len(positions))))
+    if len(positions) > 0:
+        genos = allel.GenotypeArray(genos.subset(sel0=range(len(positions))))
 
-    positions2SnpIndices = {}
-    for i in range(len(positions)):
-        positions2SnpIndices[positions[i]] = i
+        positions2SnpIndices = {}
+        for i in range(len(positions)):
+            positions2SnpIndices[positions[i]] = i
 
-    assert len(positions) == len(positions2SnpIndices) and len(positions) == len(genos)
-    return genos, positions, positions2SnpIndices, genos.count_alleles().is_biallelic()
+        assert len(positions) == len(positions2SnpIndices) and len(positions) == len(genos)
+        return genos, positions, positions2SnpIndices, genos.count_alleles().is_biallelic()
+    else:
+        return np.array([]), [], {}, np.array([])
 
 def readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMasking, shuffle=True, cutoff=0.25, genoCutoff=0.75, vcfForMaskFileName=None, sampleToPopFileName=None, pop=None):
     if vcfForMaskFileName:
