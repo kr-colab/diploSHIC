@@ -280,7 +280,10 @@ def getGenoMaskInfoInWins(isAccessibleArm, genos, positions, positions2SnpIndice
                     isAccessibleArm[positions[posIdx]-1] = False
             posIdx += 1
         snpIndicesInWins.append(snpIndicesInWin)
-    sys.stderr.write("min calledFrac: %g; max calledFrac: %g; mean: %g; median: %g\n" %(min(calledFracs), max(calledFracs), np.median(calledFracs), np.mean(calledFracs)))
+    if len(calledFracs) > 0:
+        sys.stderr.write("min calledFrac: %g; max calledFrac: %g; mean: %g; median: %g\n" %(min(calledFracs), max(calledFracs), np.median(calledFracs), np.mean(calledFracs)))
+    else:
+        sys.stderr.write("no SNPs in chromosome!\n")
     winIndex = 0
     for winOffset in range(0, lastWinEnd, winLen):
         currWin = isAccessibleArm[winOffset:winOffset+winLen]
