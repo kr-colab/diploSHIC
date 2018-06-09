@@ -46,14 +46,6 @@ def getSnpIndicesInSubWins(subWinSize, lastSubWinEnd, snpLocs):
         subWinEnd += subWinSize
     return snpIndicesInSubWins
 
-def readSampleToPopFile(sampleToPopFileName):
-    table = {}
-    with open(sampleToPopFileName) as sampleToPopFile:
-        for line in sampleToPopFile:
-            sample, pop = line.strip().split()
-            table[sample] = pop
-    return table
-
 chrArmFile = allel.read_vcf(chrArmFileName)
 chroms = chrArmFile["variants/CHROM"]
 positions = np.extract(chroms == chrArm, chrArmFile["variants/POS"])

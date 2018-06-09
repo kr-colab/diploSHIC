@@ -75,7 +75,7 @@ def getSnpIndicesInSubWins(subWinBounds, snpLocs):
     return snpIndicesInSubWins
 
 subWinBounds = getSubWinBounds(subWinLen, totalPhysLen)
-statNames = ["pi", "thetaW", "tajD", "thetaH", "fayWuH", "HapCount", "H1", "H12", "H2/H1", "ZnS", "Omega", "distVar", "distSkew", "distKurt"]
+statNames = ["pi", "thetaW", "tajD", "thetaH", "fayWuH", "maxFDA", "HapCount", "H1", "H12", "H2/H1", "ZnS", "Omega", "distVar", "distSkew", "distKurt"]
 header = []
 for statName in statNames:
     for i in range(numSubWins):
