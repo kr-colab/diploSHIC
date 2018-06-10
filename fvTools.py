@@ -47,6 +47,7 @@ def diploidizeGenotypeArray(genos):
         for j in range(0, numSamples, 2):
             currSnp.append([genos[i,j,0] , genos[i,j+1,0]])
         newGenos.append(currSnp)
+    newGenos = np.array(newGenos)
     return allel.GenotypeArray(newGenos)
 
 #contains some bits modified from scikit-allel by Alistair Miles
@@ -317,28 +318,30 @@ def readSampleToPopFile(sampleToPopFileName):
 def extractGenosAndPositionsForArm(vcfFile, chroms, currChr, sampleIndicesToKeep):
     #sys.stderr.write("extracting vcf info for arm %s\n" %(currChr))
 
-    genos = allel.GenotypeArray(vcfFile["calldata/GT"]).subset(sel1=sampleIndicesToKeep)
-    if isHaploidVcfGenoArray(genos):
-        sys.stderr.write("Detected haploid input for %s. Converting into diploid individuals (combining haplotypes in order).\n" %(currChr))
-        genos = diploidizeGenotypeArray(genos)
-    positions = np.extract(chroms == currChr, vcfFile["variants/POS"])
-    if len(positions) > 0:
-        genos = allel.GenotypeArray(genos.subset(sel0=range(len(positions))))
+    rawgenos = np.take(vcfFile["calldata/GT"], [i for i in range(len(chroms)) if chroms[i] == currChr], axis=0)
+    if len(rawgenos) > 0:
+        genos = allel.GenotypeArray(rawgenos).subset(sel1=sampleIndicesToKeep)
+        if isHaploidVcfGenoArray(genos):
+            sys.stderr.write("Detected haploid input for %s. Converting into diploid individuals (combining haplotypes in order).\n" %(currChr))
+            genos = diploidizeGenotypeArray(genos)
+            sys.stderr.write("Done diploidizing %s\n" %(currChr))
+        positions = np.extract(chroms == currChr, vcfFile["variants/POS"])
+        if len(positions) > 0:
+            genos = allel.GenotypeArray(genos.subset(sel0=range(len(positions))))
 
-        positions2SnpIndices = {}
-        for i in range(len(positions)):
-            positions2SnpIndices[positions[i]] = i
+            positions2SnpIndices = {}
+            for i in range(len(positions)):
+                positions2SnpIndices[positions[i]] = i
 
-        assert len(positions) == len(positions2SnpIndices) and len(positions) == len(genos)
-        return genos, positions, positions2SnpIndices, genos.count_alleles().is_biallelic()
-    else:
-        return np.array([]), [], {}, np.array([])
+            assert len(positions) == len(positions2SnpIndices) and len(positions) == len(genos)
+            return genos, positions, positions2SnpIndices, genos.count_alleles().is_biallelic()
+    return np.array([]), [], {}, np.array([])
 
 def readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMasking, shuffle=True, cutoff=0.25, genoCutoff=0.75, vcfForMaskFileName=None, sampleToPopFileName=None, pop=None):
     if vcfForMaskFileName:
-        #sys.stderr.write("reading geno mask info from %s\n" %(vcfForMaskFileName))
+        sys.stderr.write("reading geno mask info from %s\n" %(vcfForMaskFileName))
         vcfFile = allel.read_vcf(vcfForMaskFileName)
-        #sys.stderr.write("done with read\n")
+        sys.stderr.write("done with read\n")
         chroms = vcfFile["variants/CHROM"]
         samples = vcfFile["samples"]
         if sampleToPopFileName:
@@ -352,7 +355,7 @@ def readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMas
         fopen = open
 
     genosChecked = 0
-    #sys.stderr.write("reading %s\n" %(maskFileName))
+    sys.stderr.write("reading %s\n" %(maskFileName))
     readingMasks = False
     isAccessible, isAccessibleArm = [], []
     genoMaskInfo  = []
@@ -380,7 +383,7 @@ def readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMas
                     readingMasks = False
                 isAccessibleArm = []
                 if vcfForMaskFileName and readingMasks:
-                    #sys.stderr.write("checking geno mask info from %s\n" %(vcfForMaskFileName))
+                    sys.stderr.write("checking geno mask info from %s for %s\n" %(vcfForMaskFileName, currChr))
                     genos, positions, positions2SnpIndices, isBiallelic = extractGenosAndPositionsForArm(vcfFile, chroms, currChr, sampleIndicesToKeep)
             else:
                 if readingMasks:
@@ -398,7 +401,7 @@ def readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMas
                         currPos += 1
     if readingMasks and len(isAccessibleArm) >= totalPhysLen:
         if vcfForMaskFileName:
-            #sys.stderr.write("processing sites and genos for %s\n" %(currChr))
+            sys.stderr.write("processing sites and genos for %s\n" %(currChr))
             windowedAccessibility, windowedGenoMask = getGenoMaskInfoInWins(isAccessibleArm, genos, positions, positions2SnpIndices, totalPhysLen, subWinLen, cutoff, genoCutoff)
             if windowedAccessibility:
                 isAccessible += windowedAccessibility
@@ -415,12 +418,12 @@ def readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMas
             genoMaskInfo = [genoMaskInfo[i] for i in indices]
         else:
             random.shuffle(isAccessible)
-    count = 0
+
+    if len(isAccessible) == 0:
+        sys.exit("Error: Couldn't find a single window in our real data for masking that survived filters. May have to disable masking. AAARRRGGGGHHHHH!!!!!!")
     for i in range(len(isAccessible)):
         assert len(isAccessible[i]) == totalPhysLen
-        count += 1
-    #sys.stderr.write("checked genotypes at %d sites\n" %(genosChecked))
-    assert count
+    sys.stderr.write("checked genotypes at %d sites\n" %(genosChecked))
     if vcfForMaskFileName:
         return isAccessible, genoMaskInfo
     else:
@@ -480,11 +483,29 @@ def normalizeFeatureVec(statVec):
             normStatVec.append(statVec[k]/statSum)
     return normStatVec
 
-def maxFDA(alleleCounts):
+def maxFDA(pos, ac, start=None, stop=None, is_accessible=None):
+    # check inputs
+    if not isinstance(pos, SortedIndex):
+        pos = SortedIndex(pos, copy=False)
+    ac = asarray_ndim(ac, 2)
+    is_accessible = asarray_ndim(is_accessible, 1, allow_none=True)
+
+    # deal with subregion
+    if start is not None or stop is not None:
+        loc = pos.locate_range(start, stop)
+        pos = pos[loc]
+        ac = ac[loc]
+    if start is None:
+        start = pos[0]
+    if stop is None:
+        stop = pos[-1]
+
+    # calculate values of the stat
     dafs = []
-    for i in range(len(alleleCounts)):
-        assert len(alleleCounts[i]) == 2
-        dafs.append(alleleCounts[i][1]/float(sum(alleleCounts[i])))
+    for i in range(len(ac)):
+        p1 = ac[i, 1]
+        n = p1+ac[i, 0]
+        dafs.append(p1/float(n))
     return max(dafs)
 
 def calcAndAppendStatVal(alleleCounts, snpLocs, statName, subWinStart, subWinEnd, statVals, instanceIndex, subWinIndex, hapsInSubWin, unmasked, precomputedStats):
@@ -501,7 +522,7 @@ def calcAndAppendStatVal(alleleCounts, snpLocs, statName, subWinStart, subWinEnd
     elif statName == "HapCount":
         statVals[statName][instanceIndex].append(len(hapsInSubWin.distinct()))
     elif statName == "maxFDA":
-        statVals[statName][instanceIndex].append(maxFDA(alleleCounts))
+        statVals[statName][instanceIndex].append(maxFDA(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
     elif statName == "H1":
         h1, h12, h123, h21 = allel.stats.selection.garud_h(hapsInSubWin)
         statVals["H1"][instanceIndex].append(h1)
@@ -738,6 +759,8 @@ def calcAndAppendStatValForScan(alleleCounts, snpLocs, statName, subWinStart, su
         statVals[statName].append(thetah(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
     elif statName == "fayWuH":
         statVals[statName].append(statVals["thetaH"][subWinIndex]-statVals["pi"][subWinIndex])
+    elif statName == "maxFDA":
+        statVals[statName][instanceIndex].append(maxFDA(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
     elif statName == "HapCount":
         statVals[statName].append(len(hapsInSubWin.distinct()))
     elif statName == "H1":
@@ -808,6 +831,8 @@ def appendStatValsForMonomorphicForScan(statName, statVals, subWinIndex):
         statVals[statName].append(0.0)
     elif statName == "fayWuH":
         statVals[statName].append(0.0)
+    elif statName == "maxFDA":
+        statVals[statName].append(0.0)
     elif statName == "nDiplos":
         statVals[statName].append(1)
     elif statName in ["diplo_H1"]:
@@ -874,8 +899,6 @@ def thetah(pos, ac, start=None, stop=None, is_accessible=None):
         stop = pos[-1]
 
     # calculate values of the stat
-    dafCounts = ac[: ,1]
-    sampleSizes = sum([ac[i] for i in range(len(ac))])
     h = 0
     for i in range(len(ac)):
         p1 = ac[i, 1]
