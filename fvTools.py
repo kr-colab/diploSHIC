@@ -270,7 +270,7 @@ def getGenoMaskInfoInWins(isAccessibleArm, genos, positions, positions2SnpIndice
         firstPos = winOffset+1
         lastPos = winOffset+winLen
         snpIndicesInWin = []
-        assert positions[posIdx] >= firstPos
+        assert len(positions) == 0 or posIdx >= len(positions) or positions[posIdx] >= firstPos
         while posIdx < len(positions) and positions[posIdx] <= lastPos:
             if isAccessibleArm[positions[posIdx]-1]:
                 calledFrac = calledGenoFracAtSite(genos[posIdx])
