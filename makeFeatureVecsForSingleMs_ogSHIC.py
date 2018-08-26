@@ -1,5 +1,4 @@
 import sys
-import os
 import allel
 import random
 import numpy as np
@@ -19,7 +18,7 @@ totalPhysLen = int(totalPhysLen)
 numSubWins = int(numSubWins)
 pMisPol = float(pMisPol)
 # below was the old call to get the iHS normalizations
-#standardizationInfo = readStatsDafsComputeStandardizationBins(statAndDafFileName, nBins=50, pMisPol=pMisPol)
+# standardizationInfo = readStatsDafsComputeStandardizationBins(statAndDafFileName, nBins=50, pMisPol=pMisPol)
 subWinLen = totalPhysLen//numSubWins
 assert totalPhysLen % numSubWins == 0 and numSubWins > 1
 chrArmsForMasking = chrArmsForMasking.split(",")
@@ -137,7 +136,7 @@ for instanceIndex in range(numInstances):
         if pMisPol > 0:
             alleleCountsUnmaskedOnly = fvTools.misPolarizeAlleleCounts(
                 alleleCountsUnmaskedOnly, pMisPol)
-        #dafs = alleleCountsUnmaskedOnly[:,1]/float(sampleSizes[0])
+        # dafs = alleleCountsUnmaskedOnly[:,1]/float(sampleSizes[0])
         unmaskedHaps = haps.subset(sel0=unmaskedSnpIndices)
         unmaskedGenos = genos.subset(sel0=unmaskedSnpIndices)
         precomputedStats = {}
@@ -180,7 +179,7 @@ for instanceIndex in range(numInstances):
                 genosInSubWin = genos.subset(sel0=snpIndicesInSubWinUnmasked)
                 for statName in statNames:
                     fvTools.calcAndAppendStatVal(alleleCountsUnmaskedOnly, positionArrayUnmaskedOnly, statName, subWinStart,
-                                         subWinEnd, statVals, instanceIndex, subWinIndex, hapsInSubWin, unmasked, precomputedStats)
+                                                 subWinEnd, statVals, instanceIndex, subWinIndex, hapsInSubWin, unmasked, precomputedStats)
             else:
                 for statName in statNames:
                     fvTools.appendStatValsForMonomorphic(
@@ -207,7 +206,7 @@ with open(fvecFileName, "w") as fvecFile:
         outVec = []
         for statName in statNames:
             # print(statName)
-            outVec += normalizeFeatureVec(statVals[statName][i])
+            outVec += fvTools.snormalizeFeatureVec(statVals[statName][i])
             for subWinIndex in range(numSubWins):
                 statLines[subWinIndex].append(
                     statVals[statName][i][subWinIndex])
