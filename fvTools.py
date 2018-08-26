@@ -244,9 +244,11 @@ def readFa(faFileName, upper=False):
             if line.startswith(">"):
                 if reading:
                     if upper:
-                        seqData[currChr] = seq.upper()  # NOQA
+                        # AK: currChr, seq undefined
+                        seqData[currChr] = seq.upper()
                     else:
-                        seqData[currChr] = seq  # NOQA
+                        # AK: currChr, seq undefined
+                        seqData[currChr] = seq
                 else:
                     reading = True
                 currChr = line[1:].strip()
