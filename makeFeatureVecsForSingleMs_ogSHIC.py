@@ -3,8 +3,10 @@ import os
 import allel
 import random
 import numpy as np
-from msTools import *
-from fvTools import *
+import msTools
+import fvTools
+# from msTools import *
+# from fvTools import *
 import time
 
 '''usage example
@@ -24,7 +26,7 @@ chrArmsForMasking = chrArmsForMasking.split(",")
 
 sys.stderr.write("file name='%s'" % (trainingDataFileName))
 
-trainingDataFileObj, sampleSize, numInstances = openMsOutFileForSequentialReading(
+trainingDataFileObj, sampleSize, numInstances = msTools.openMsOutFileForSequentialReading(
     trainingDataFileName)
 
 if maskFileName.lower() in ["none", "false"]:
@@ -60,10 +62,10 @@ if not maskFileName:
 else:
     drawWithReplacement = False
     if ancFileName.lower() in ["none", "false"]:
-        maskData = readMaskDataForTraining(
+        maskData = fvTools.readMaskDataForTraining(
             maskFileName, totalPhysLen, subWinLen, chrArmsForMasking, shuffle=True, cutoff=unmaskedFracCutoff)
     else:
-        maskData = readMaskAndAncDataForTraining(
+        maskData = fvTools.readMaskAndAncDataForTraining(
             maskFileName, ancFileName, totalPhysLen, subWinLen, chrArmsForMasking, shuffle=True, cutoff=unmaskedFracCutoff)
     if len(maskData) < numInstances:
         sys.stderr.write("Warning: didn't get enough windows from masked data (needed %d; got %d); will draw with replacement!!\n" % (
@@ -103,7 +105,7 @@ for statName in statNames:
 start = time.clock()
 numInstancesDone = 0
 for instanceIndex in range(numInstances):
-    hapArrayIn, positionArray = readNextMsRepToHaplotypeArrayIn(
+    hapArrayIn, positionArray = msTools.readNextMsRepToHaplotypeArrayIn(
         trainingDataFileObj, sampleSize, totalPhysLen)
 
     snpIndicesInSubWins = getSnpIndicesInSubWins(subWinBounds, positionArray)
@@ -122,7 +124,7 @@ for instanceIndex in range(numInstances):
             statVals[statName].append([])
         for subWinIndex in range(numSubWins):
             for statName in statNames:
-                appendStatValsForMonomorphic(
+                fvTools.appendStatValsForMonomorphic(
                     statName, statVals, instanceIndex, subWinIndex)
     else:
         positionArrayUnmaskedOnly = [positionArray[i]
@@ -133,7 +135,7 @@ for instanceIndex in range(numInstances):
         sampleSizes = [sum(x) for x in alleleCountsUnmaskedOnly]
         assert len(set(sampleSizes)) == 1 and sampleSizes[0] == sampleSize
         if pMisPol > 0:
-            alleleCountsUnmaskedOnly = misPolarizeAlleleCounts(
+            alleleCountsUnmaskedOnly = fvTools.misPolarizeAlleleCounts(
                 alleleCountsUnmaskedOnly, pMisPol)
         #dafs = alleleCountsUnmaskedOnly[:,1]/float(sampleSizes[0])
         unmaskedHaps = haps.subset(sel0=unmaskedSnpIndices)
@@ -177,11 +179,11 @@ for instanceIndex in range(numInstances):
                 hapsInSubWin = haps.subset(sel0=snpIndicesInSubWinUnmasked)
                 genosInSubWin = genos.subset(sel0=snpIndicesInSubWinUnmasked)
                 for statName in statNames:
-                    calcAndAppendStatVal(alleleCountsUnmaskedOnly, positionArrayUnmaskedOnly, statName, subWinStart,
+                    fvTools.calcAndAppendStatVal(alleleCountsUnmaskedOnly, positionArrayUnmaskedOnly, statName, subWinStart,
                                          subWinEnd, statVals, instanceIndex, subWinIndex, hapsInSubWin, unmasked, precomputedStats)
             else:
                 for statName in statNames:
-                    appendStatValsForMonomorphic(
+                    fvTools.appendStatValsForMonomorphic(
                         statName, statVals, instanceIndex, subWinIndex)
     numInstancesDone += 1
 
@@ -221,4 +223,4 @@ if statFiles:
 
 sys.stderr.write("total time spent calculating summary statistics and generating feature vectors: %f secs\n" % (
     time.clock()-start))
-closeMsOutFile(trainingDataFileObj)
+msTools.closeMsOutFile(trainingDataFileObj)
