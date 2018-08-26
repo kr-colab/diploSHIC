@@ -408,7 +408,7 @@ def readMaskDataForTraining(maskFileName, totalPhysLen,
         if sampleToPopFileName:
             sampleToPop = readSampleToPopFile(sampleToPopFileName)
             sampleIndicesToKeep = [i for i in range(
-                len(samples)) if sampleToPop.get(samples[i], "popNotFound!") == pop] # NOQA
+                len(samples)) if sampleToPop.get(samples[i], "popNotFound!") == pop]  # NOQA
         else:
             sampleIndicesToKeep = [i for i in range(len(samples))]
     if maskFileName.endswith(".gz"):
@@ -452,7 +452,8 @@ def readMaskDataForTraining(maskFileName, totalPhysLen,
                     readingMasks = False
                 isAccessibleArm = []
                 if vcfForMaskFileName and readingMasks:
-                    sys.stderr.write("checking geno mask info from %s for %s\n" % (
+                    sys.stderr.write("checking geno mask \
+                            info from %s for %s\n" % (
                         vcfForMaskFileName, currChr))
                     # AK: undefined variables again
                     genos, positions, positions2SnpIndices, isBiallelic = extractGenosAndPositionsForArm(
@@ -462,9 +463,12 @@ def readMaskDataForTraining(maskFileName, totalPhysLen,
                     for char in line.strip().upper():
                         if char == 'N':
                             isAccessibleArm.append(False)
-                        elif vcfForMaskFileName and currPos in positions2SnpIndices:
+                        # AK: logic unclear here:
+                        # are you intending a boolean
+                        # test on vcfForMaskFilename?
+                        elif vcfForMaskFileName and currPos in positions2SnpIndices:  # NOQA
                             genosChecked += 1
-                            if isBiallelic[positions2SnpIndices[currPos]] and calledGenoFracAtSite(genos[positions2SnpIndices[currPos]]) >= genoCutoff:
+                            if isBiallelic[positions2SnpIndices[currPos]] and calledGenoFracAtSite(genos[positions2SnpIndices[currPos]]) >= genoCutoff:  # NOQA
                                 isAccessibleArm.append(True)
                             else:
                                 isAccessibleArm.append(False)
@@ -475,7 +479,9 @@ def readMaskDataForTraining(maskFileName, totalPhysLen,
         if vcfForMaskFileName:
             sys.stderr.write("processing sites and genos for %s\n" % (currChr))
             windowedAccessibility, windowedGenoMask = getGenoMaskInfoInWins(
-                isAccessibleArm, genos, positions, positions2SnpIndices, totalPhysLen, subWinLen, cutoff, genoCutoff)
+                isAccessibleArm, genos, positions,
+                positions2SnpIndices, totalPhysLen,
+                subWinLen, cutoff, genoCutoff)
             if windowedAccessibility:
                 isAccessible += windowedAccessibility
                 genoMaskInfo += windowedGenoMask
@@ -592,9 +598,12 @@ def maxFDA(pos, ac, start=None, stop=None, is_accessible=None):
     return max(dafs)
 
 
-def calcAndAppendStatVal(alleleCounts, snpLocs, statName, subWinStart, subWinEnd, statVals, instanceIndex, subWinIndex, hapsInSubWin, unmasked, precomputedStats):
+def calcAndAppendStatVal(alleleCounts, snpLocs, statName,
+                         subWinStart, subWinEnd, statVals,
+                         instanceIndex, subWinIndex, hapsInSubWin,
+                         unmasked, precomputedStats):
     if statName == "tajD":
-        statVals[statName][instanceIndex].append(allel.stats.diversity.tajima_d(
+        statVals[statName][instanceIndex].append(allel.stats.diversity.tajima_d(  # NOQA
             alleleCounts, pos=snpLocs, start=subWinStart, stop=subWinEnd))
     elif statName == "pi":
         statVals[statName][instanceIndex].append(allel.stats.diversity.sequence_diversity(
@@ -873,14 +882,14 @@ def calcAndAppendStatValForScan(alleleCounts, snpLocs, statName, subWinStart, su
         statVals[statName].append(allel.stats.diversity.tajima_d(
             alleleCounts, pos=snpLocs, start=subWinStart, stop=subWinEnd))
     elif statName == "pi":
-        statVals[statName].append(allel.stats.diversity.sequence_diversity(
-            snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
+        statVals[statName].append(allel.stats.diversity.sequence_diversity(  # NOQA
+            snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))  # NOQA
     elif statName == "thetaW":
         statVals[statName].append(allel.stats.diversity.watterson_theta(
-            snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
+            snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))  # NOQA
     elif statName == "thetaH":
         statVals[statName].append(thetah(
-            snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
+            snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))  # NOQA
     elif statName == "fayWuH":
         statVals[statName].append(
             statVals["thetaH"][subWinIndex]-statVals["pi"][subWinIndex])
@@ -952,7 +961,8 @@ def calcAndAppendStatValForScan(alleleCounts, snpLocs, statName, subWinStart, su
         statVals["distVar"].append(np.var(dists, ddof=1))
         statVals["distSkew"].append(scipy.stats.skew(dists))
         statVals["distKurt"].append(scipy.stats.kurtosis(dists))
-    elif statName in ["H12", "H123", "H2/H1", "Omega", "distVar", "distSkew", "distKurt"]:
+    elif statName in ["H12", "H123", "H2/H1",
+                      "Omega", "distVar", "distSkew", "distKurt"]:
         assert len(statVals[statName]) == subWinIndex+1
 
 
@@ -1006,8 +1016,9 @@ def appendStatValsForMonomorphicForScan(statName, statVals, subWinIndex):
         statVals["iHSMax"].append(0.0)
     elif statName == "nSLMax":
         statVals["nSLMax"].append(0.0)
-    elif statName in ["H12", "H123", "H2/H1", "diplo_H12", "diplo_H123", "diplo_H2/H1", "Omega", "diplo_Omega"]:
-        #print(statName, statVals[statName][instanceIndex], subWinIndex+1)
+    elif statName in ["H12", "H123", "H2/H1", "diplo_H12",
+                      "diplo_H123", "diplo_H2/H1", "Omega", "diplo_Omega"]:
+        # print(statName, statVals[statName][instanceIndex], subWinIndex+1)
         assert len(statVals[statName]) == subWinIndex+1
     else:
         statVals[statName].append(0.0)
@@ -1017,7 +1028,7 @@ def appendStatValsForMonomorphicForScan(statName, statVals, subWinIndex):
 WARNING: this code assumes that the second column of ac gives the derived alleles;
 please ensure that this is the case (and that you are using polarized data) if
 are going to use values of this statistic for the classifier!!
-'''
+''' # NOQA
 
 
 def thetah(pos, ac, start=None, stop=None, is_accessible=None):
