@@ -191,7 +191,7 @@ with open(fvecFileName, "w") as fvecFile:
         outVec = []
         for statName in statNames:
             # print(statName)
-            outVec += fvTools.snormalizeFeatureVec(statVals[statName][i])
+            outVec += fvTools.normalizeFeatureVec(statVals[statName][i])
             for subWinIndex in range(numSubWins):
                 statLines[subWinIndex].append(
                     statVals[statName][i][subWinIndex])
