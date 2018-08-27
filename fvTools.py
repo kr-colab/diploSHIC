@@ -10,15 +10,17 @@ import random
 import gzip
 import scipy.stats
 
+
 def misPolarizeAlleleCounts(ac, pMisPol):
     pMisPolInv = 1-pMisPol
     mapping = []
     for i in range(len(ac)):
         if random.random() >= pMisPolInv:
-            mapping.append([1, 0]) #swap
+            mapping.append([1, 0])  # swap
         else:
-            mapping.append([0, 1]) #no swap
+            mapping.append([0, 1])  # no swap
     return ac.map_alleles(mapping)
+
 
 def calledGenoFracAtSite(genosAtSite):
     calledCount, missingCount = 0, 0
@@ -33,25 +35,32 @@ def calledGenoFracAtSite(genosAtSite):
             calledCount += 1
     return calledCount/float(missingCount + calledCount)
 
+
 def isHaploidVcfGenoArray(genos):
-    return all(0 > genos[:,:,1].flat)
+    return all(0 > genos[:, :, 1].flat)
+
 
 def diploidizeGenotypeArray(genos):
     numSnps, numSamples, numAlleles = genos.shape
     if numSamples % 2 != 0:
-        sys.stderr.write("Diploidizing an odd-numbered sample. The last genome will be truncated.\n")
+        sys.stderr.write(
+            "Diploidizing an odd-numbered sample. \
+             The last genome will be truncated.\n")
         numSamples -= 1
     newGenos = []
     for i in range(numSnps):
         currSnp = []
         for j in range(0, numSamples, 2):
-            currSnp.append([genos[i,j,0] , genos[i,j+1,0]])
+            currSnp.append([genos[i, j, 0], genos[i, j+1, 0]])
         newGenos.append(currSnp)
     newGenos = np.array(newGenos)
     return allel.GenotypeArray(newGenos)
 
-#contains some bits modified from scikit-allel by Alistair Miles
-def readStatsDafsComputeStandardizationBins(statAndDafFileName, nBins=50, pMisPol=0.0):
+# contains some bits modified from scikit-allel by Alistair Miles
+
+
+def readStatsDafsComputeStandardizationBins(statAndDafFileName,
+                                            nBins=50, pMisPol=0.0):
     stats = {}
     dafs = []
     pMisPolInv = 1-pMisPol
@@ -84,17 +93,25 @@ def readStatsDafsComputeStandardizationBins(statAndDafFileName, nBins=50, pMisPo
         daf_nonan = np.array(dafs)[nonan]
         bins = allel.stats.selection.make_similar_sized_bins(daf_nonan, nBins)
         mean_score, _, _ = scipy.stats.binned_statistic(daf_nonan, score_nonan,
-                                        statistic=np.mean,
-                                        bins=bins)
+                                                        statistic=np.mean,
+                                                        bins=bins)
         std_score, _, _ = scipy.stats.binned_statistic(daf_nonan, score_nonan,
-                                       statistic=np.std,
-                                       bins=bins)
+                                                       statistic=np.std,
+                                                       bins=bins)
         statInfo[statName] = (mean_score, std_score, bins)
-    sys.stderr.write("mispolarized %d of %d (%f%%) SNPs when standardizing scores in %s\n" %(misPolarizedSnps, totalSnps, 100*misPolarizedSnps/float(totalSnps), statAndDafFileName))
+        sys.stderr.write("mispolarized %d of %d (%f%%) \
+                      SNPs when standardizing scores in %s\n" % (
+            misPolarizedSnps, totalSnps,
+            100*misPolarizedSnps/float(totalSnps),
+            statAndDafFileName))
     return statInfo
 
-#includes a snippet copied from scikit-allel
-def standardize_by_allele_count_from_precomp_bins(score, dafs, standardizationInfo):
+# includes a snippet copied from scikit-allel
+
+
+def standardize_by_allele_count_from_precomp_bins(score,
+                                                  dafs,
+                                                  standardizationInfo):
     score_standardized = np.empty_like(score)
     mean_score, std_score, bins = standardizationInfo
     dafs = np.array(dafs)
@@ -115,12 +132,13 @@ def standardize_by_allele_count_from_precomp_bins(score, dafs, standardizationIn
         score_standardized[loc] = (score[loc] - m) / s
     return score_standardized
 
+
 def readFaArm(armFileName, armName=False):
     if armFileName.endswith(".gz"):
         fopen = gzip.open
     else:
         fopen = open
-    with fopen(armFileName,'rt') as armFile:
+    with fopen(armFileName, 'rt') as armFile:
         reading = False
         seq = ""
         for line in armFile:
@@ -137,6 +155,7 @@ def readFaArm(armFileName, armName=False):
                 seq += line.strip()
     return seq
 
+
 def polarizeSnps(unmasked, positions, refAlleles, altAlleles, ancArm):
     assert len(unmasked) == len(ancArm)
     assert len(positions) == len(refAlleles)
@@ -151,20 +170,23 @@ def polarizeSnps(unmasked, positions, refAlleles, altAlleles, ancArm):
             if i+1 in isSnp:
                 ref, alt = refAlleles[isSnp[i+1]], altAlleles[isSnp[i+1]]
                 if ancArm[i] == ref:
-                    mapping.append([0, 1]) #no swap
+                    mapping.append([0, 1])  # no swap
                 elif ancArm[i] == alt:
-                    mapping.append([1, 0]) #swap
+                    mapping.append([1, 0])  # swap
                 else:
-                    mapping.append([0, 1]) #no swap -- failed to polarize
+                    mapping.append([0, 1])  # no swap -- failed to polarize
                     unmasked[i] = False
         elif ancArm[i] == "N":
             unmasked[i] = False
             if i+1 in isSnp:
-                mapping.append([0, 1]) #no swap -- failed to polarize
+                mapping.append([0, 1])  # no swap -- failed to polarize
         else:
-            sys.exit("Found a character in ancestral chromosome that is not 'A', 'C', 'G', 'T' or 'N' (all upper case)! AAARRRGGGHHHHHHHHH!!!\n")
+            sys.exit(
+                "Found a character in ancestral chromosome \
+                 that is not 'A', 'C', 'G', 'T' or 'N' (all upper case)!\n")
     assert len(mapping) == len(positions)
     return mapping, unmasked
+
 
 def getAccessibilityInWins(isAccessibleArm, winLen, subWinLen, cutoff):
     wins = []
@@ -174,7 +196,8 @@ def getAccessibilityInWins(isAccessibleArm, winLen, subWinLen, cutoff):
         currWin = isAccessibleArm[i:i+winLen]
         goodWin = True
         for subWinStart in range(0, winLen, subWinLen):
-            unmaskedFrac = currWin[subWinStart:subWinStart+subWinLen].count(True)/float(subWinLen)
+            unmaskedFrac = currWin[subWinStart:subWinStart +
+                                   subWinLen].count(True)/float(subWinLen)
             if unmaskedFrac < cutoff:
                 goodWin = False
         if goodWin:
@@ -183,22 +206,24 @@ def getAccessibilityInWins(isAccessibleArm, winLen, subWinLen, cutoff):
             badWinCount += 1
     return wins
 
-def windowVals(vals, subWinBounds, positionArray, keepNans=False, absVal=False):
+
+def windowVals(vals, subWinBounds,
+               positionArray, keepNans=False, absVal=False):
     assert len(vals) == len(positionArray)
 
     subWinIndex = 0
     winStart, winEnd = subWinBounds[subWinIndex]
-    #windowedVals = [[]]
+    # windowedVals = [[]]
     windowedVals = [[] for x in range(len(subWinBounds))]
     for i in range(len(positionArray)):
         currPos = positionArray[i]
         while currPos > winEnd:
             subWinIndex += 1
             winStart, winEnd = subWinBounds[subWinIndex]
-            #windowedVals.append([])
+            # windowedVals.append([])
         assert currPos >= winStart and currPos <= winEnd
-        if keepNans == True or not math.isnan(vals[i]):
-            #windowedVals[-1].append(vals[i])
+        if keepNans is True or not math.isnan(vals[i]):
+            # windowedVals[-1].append(vals[i])
             windowedVals[subWinIndex].append(vals[i])
     assert len(windowedVals) == len(subWinBounds)
     if absVal:
@@ -206,20 +231,23 @@ def windowVals(vals, subWinBounds, positionArray, keepNans=False, absVal=False):
     else:
         return [np.array(win) for win in windowedVals]
 
+
 def readFa(faFileName, upper=False):
     seqData = {}
     if faFileName.endswith(".gz"):
         fopen = gzip.open
     else:
         fopen = open
-    with fopen(faFileName,'rt') as faFile:
+    with fopen(faFileName, 'rt') as faFile:
         reading = False
         for line in faFile:
             if line.startswith(">"):
                 if reading:
                     if upper:
+                        # AK: currChr, seq undefined
                         seqData[currChr] = seq.upper()
                     else:
+                        # AK: currChr, seq undefined
                         seqData[currChr] = seq
                 else:
                     reading = True
@@ -233,9 +261,14 @@ def readFa(faFileName, upper=False):
         seqData[currChr] = seq
     return seqData
 
-def readMaskAndAncDataForTraining(maskFileName, ancFileName, totalPhysLen, subWinLen, chrArmsForMasking, shuffle=True, cutoff=0.25):
+
+def readMaskAndAncDataForTraining(maskFileName, ancFileName,
+                                  totalPhysLen, subWinLen,
+                                  chrArmsForMasking,
+                                  shuffle=True, cutoff=0.25):
     isAccessible = []
-    maskData, ancData = readFa(maskFileName, upper=True), readFa(ancFileName, upper=True)
+    maskData, ancData = readFa(maskFileName, upper=True), readFa(
+        ancFileName, upper=True)
     if 'all' in chrArmsForMasking:
         chrArmsForMasking = sorted(maskData)
     for currChr in chrArmsForMasking:
@@ -246,7 +279,8 @@ def readMaskAndAncDataForTraining(maskFileName, ancFileName, totalPhysLen, subWi
                 isAccessibleArm.append(False)
             else:
                 isAccessibleArm.append(True)
-        windowedAccessibility = getAccessibilityInWins(isAccessibleArm, totalPhysLen, subWinLen, cutoff)
+        windowedAccessibility = getAccessibilityInWins(
+            isAccessibleArm, totalPhysLen, subWinLen, cutoff)
         if windowedAccessibility:
             isAccessible += windowedAccessibility
     if shuffle:
@@ -258,19 +292,25 @@ def readMaskAndAncDataForTraining(maskFileName, ancFileName, totalPhysLen, subWi
     assert count
     return isAccessible
 
-def getGenoMaskInfoInWins(isAccessibleArm, genos, positions, positions2SnpIndices, winLen, subWinLen, cutoff, genoCutoff):
+
+def getGenoMaskInfoInWins(isAccessibleArm, genos,
+                          positions, positions2SnpIndices,
+                          winLen, subWinLen, cutoff, genoCutoff):
     windowedAcc, windowedGenoMask = [], []
     badWinCount = 0
     lastWinEnd = len(isAccessibleArm) - len(isAccessibleArm) % winLen
     posIdx = 0
     snpIndicesInWins = []
-    sys.stderr.write("about to get geno masks from arm; len: %d, genos shape: %s, num snps: %d\n" %(len(isAccessibleArm), genos.shape, len(positions)))
+    sys.stderr.write("about to get geno masks from arm; \
+            len: %d, genos shape: %s, num snps: %d\n" % (
+        len(isAccessibleArm), genos.shape, len(positions)))
     calledFracs = []
     for winOffset in range(0, lastWinEnd, winLen):
         firstPos = winOffset+1
         lastPos = winOffset+winLen
         snpIndicesInWin = []
-        assert len(positions) == 0 or posIdx >= len(positions) or positions[posIdx] >= firstPos
+        assert len(positions) == 0 or posIdx >= len(
+            positions) or positions[posIdx] >= firstPos
         while posIdx < len(positions) and positions[posIdx] <= lastPos:
             if isAccessibleArm[positions[posIdx]-1]:
                 calledFrac = calledGenoFracAtSite(genos[posIdx])
@@ -282,7 +322,10 @@ def getGenoMaskInfoInWins(isAccessibleArm, genos, positions, positions2SnpIndice
             posIdx += 1
         snpIndicesInWins.append(snpIndicesInWin)
     if len(calledFracs) > 0:
-        sys.stderr.write("min calledFrac: %g; max calledFrac: %g; mean: %g; median: %g\n" %(min(calledFracs), max(calledFracs), np.median(calledFracs), np.mean(calledFracs)))
+        sys.stderr.write("min calledFrac: %g; max calledFrac: %g; \
+                mean: %g; median: %g\n" % (
+            min(calledFracs), max(calledFracs),
+            np.median(calledFracs), np.mean(calledFracs)))
     else:
         sys.stderr.write("no SNPs in chromosome!\n")
     winIndex = 0
@@ -292,7 +335,8 @@ def getGenoMaskInfoInWins(isAccessibleArm, genos, positions, positions2SnpIndice
             currGenos = genos.subset(sel0=snpIndicesInWins[winIndex])
             goodWin = True
             for subWinStart in range(0, winLen, subWinLen):
-                unmaskedFrac = currWin[subWinStart:subWinStart+subWinLen].count(True)/float(subWinLen)
+                unmaskedFrac = currWin[subWinStart:subWinStart +
+                                       subWinLen].count(True)/float(subWinLen)
                 if unmaskedFrac < cutoff:
                     goodWin = False
             if goodWin:
@@ -302,10 +346,13 @@ def getGenoMaskInfoInWins(isAccessibleArm, genos, positions, positions2SnpIndice
                 badWinCount += 1
         winIndex += 1
     if windowedAcc:
-        sys.stderr.write("returning %d geno arrays, with an avg of %f snps\n" %(len(windowedGenoMask), sum([len(windowedGenoMask[i]) for i in range(len(windowedGenoMask))])/float(len(windowedGenoMask))))
+        sys.stderr.write("returning %d geno arrays, \
+        with an avg of %f snps\n" % (len(windowedGenoMask), sum(
+            [len(windowedGenoMask[i]) for i in range(len(windowedGenoMask))])/float(len(windowedGenoMask))))  # NOQA
     else:
         sys.stderr.write("returning 0 geno arrays\n")
     return windowedAcc, windowedGenoMask
+
 
 def readSampleToPopFile(sampleToPopFileName):
     table = {}
@@ -315,38 +362,53 @@ def readSampleToPopFile(sampleToPopFileName):
             table[sample] = pop
     return table
 
-def extractGenosAndPositionsForArm(vcfFile, chroms, currChr, sampleIndicesToKeep):
-    #sys.stderr.write("extracting vcf info for arm %s\n" %(currChr))
 
-    rawgenos = np.take(vcfFile["calldata/GT"], [i for i in range(len(chroms)) if chroms[i] == currChr], axis=0)
+def extractGenosAndPositionsForArm(vcfFile, chroms,
+                                   currChr, sampleIndicesToKeep):
+    # sys.stderr.write("extracting vcf info for arm %s\n" %(currChr))
+
+    rawgenos = np.take(
+        vcfFile["calldata/GT"], [i for i in range(len(chroms)) if chroms[i] == currChr], axis=0)  # NOQA
     if len(rawgenos) > 0:
         genos = allel.GenotypeArray(rawgenos).subset(sel1=sampleIndicesToKeep)
         if isHaploidVcfGenoArray(genos):
-            sys.stderr.write("Detected haploid input for %s. Converting into diploid individuals (combining haplotypes in order).\n" %(currChr))
+            sys.stderr.write(
+                "Detected haploid input for %s. \
+                 Converting into diploid individuals \
+                 (combining haplotypes in order).\n" % (currChr))
             genos = diploidizeGenotypeArray(genos)
-            sys.stderr.write("Done diploidizing %s\n" %(currChr))
+            sys.stderr.write("Done diploidizing %s\n" % (currChr))
         positions = np.extract(chroms == currChr, vcfFile["variants/POS"])
         if len(positions) > 0:
-            genos = allel.GenotypeArray(genos.subset(sel0=range(len(positions))))
+            genos = allel.GenotypeArray(
+                genos.subset(sel0=range(len(positions))))
 
             positions2SnpIndices = {}
             for i in range(len(positions)):
                 positions2SnpIndices[positions[i]] = i
 
-            assert len(positions) == len(positions2SnpIndices) and len(positions) == len(genos)
-            return genos, positions, positions2SnpIndices, genos.count_alleles().is_biallelic()
+            assert len(positions) == len(
+                positions2SnpIndices) and len(positions) == len(genos)
+            return genos, positions, positions2SnpIndices, genos.count_alleles().is_biallelic()  # NOQA
     return np.array([]), [], {}, np.array([])
 
-def readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMasking, shuffle=True, cutoff=0.25, genoCutoff=0.75, vcfForMaskFileName=None, sampleToPopFileName=None, pop=None):
+
+def readMaskDataForTraining(maskFileName, totalPhysLen,
+                            subWinLen, chrArmsForMasking,
+                            shuffle=True, cutoff=0.25,
+                            genoCutoff=0.75, vcfForMaskFileName=None,
+                            sampleToPopFileName=None, pop=None):
     if vcfForMaskFileName:
-        sys.stderr.write("reading geno mask info from %s\n" %(vcfForMaskFileName))
+        sys.stderr.write("reading geno mask info from %s\n" %
+                         (vcfForMaskFileName))
         vcfFile = allel.read_vcf(vcfForMaskFileName)
         sys.stderr.write("done with read\n")
         chroms = vcfFile["variants/CHROM"]
         samples = vcfFile["samples"]
         if sampleToPopFileName:
             sampleToPop = readSampleToPopFile(sampleToPopFileName)
-            sampleIndicesToKeep = [i for i in range(len(samples)) if sampleToPop.get(samples[i], "popNotFound!") == pop]
+            sampleIndicesToKeep = [i for i in range(
+                len(samples)) if sampleToPop.get(samples[i], "popNotFound!") == pop]  # NOQA
         else:
             sampleIndicesToKeep = [i for i in range(len(samples))]
     if maskFileName.endswith(".gz"):
@@ -355,44 +417,58 @@ def readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMas
         fopen = open
 
     genosChecked = 0
-    sys.stderr.write("reading %s\n" %(maskFileName))
+    sys.stderr.write("reading %s\n" % (maskFileName))
     readingMasks = False
     isAccessible, isAccessibleArm = [], []
-    genoMaskInfo  = []
-    with fopen(maskFileName,'rt') as maskFile:
+    genoMaskInfo = []
+    with fopen(maskFileName, 'rt') as maskFile:
         for line in maskFile:
             if line.startswith(">"):
                 if readingMasks and len(isAccessibleArm) >= totalPhysLen:
                     if vcfForMaskFileName:
-                        sys.stderr.write("processing sites and genos for %s\n" %(currChr))
-                        windowedAccessibility, windowedGenoMask = getGenoMaskInfoInWins(isAccessibleArm, genos, positions, positions2SnpIndices, totalPhysLen, subWinLen, cutoff, genoCutoff)
+                        sys.stderr.write(
+                            "processing sites \
+                             and genos for %s\n" % (currChr))
+                        # AK: there's a bug here.  genos, possitions, and positions2SnpIndicies
+                        # are undefined
+                        windowedAccessibility, windowedGenoMask = getGenoMaskInfoInWins(
+                            isAccessibleArm, genos, positions,
+                            positions2SnpIndices, totalPhysLen, subWinLen, cutoff, genoCutoff)
                         if windowedAccessibility:
                             isAccessible += windowedAccessibility
                             genoMaskInfo += windowedGenoMask
                     else:
-                        windowedAccessibility = getAccessibilityInWins(isAccessibleArm, totalPhysLen, subWinLen, cutoff)
+                        windowedAccessibility = getAccessibilityInWins(
+                            isAccessibleArm, totalPhysLen, subWinLen, cutoff)
                         if windowedAccessibility:
                             isAccessible += windowedAccessibility
 
                 currChr = line[1:].strip()
                 currPos = 0
-                #sys.stderr.write("chrom: " + currChr + "\n")
+                # sys.stderr.write("chrom: " + currChr + "\n")
                 if 'all' in chrArmsForMasking or currChr in chrArmsForMasking:
                     readingMasks = True
                 else:
                     readingMasks = False
                 isAccessibleArm = []
                 if vcfForMaskFileName and readingMasks:
-                    sys.stderr.write("checking geno mask info from %s for %s\n" %(vcfForMaskFileName, currChr))
-                    genos, positions, positions2SnpIndices, isBiallelic = extractGenosAndPositionsForArm(vcfFile, chroms, currChr, sampleIndicesToKeep)
+                    sys.stderr.write("checking geno mask \
+                            info from %s for %s\n" % (
+                        vcfForMaskFileName, currChr))
+                    # AK: undefined variables again
+                    genos, positions, positions2SnpIndices, isBiallelic = extractGenosAndPositionsForArm(
+                        vcfFile, chroms, currChr, sampleIndicesToKeep)
             else:
                 if readingMasks:
                     for char in line.strip().upper():
                         if char == 'N':
                             isAccessibleArm.append(False)
-                        elif vcfForMaskFileName and currPos in positions2SnpIndices:
+                        # AK: logic unclear here:
+                        # are you intending a boolean
+                        # test on vcfForMaskFilename?
+                        elif vcfForMaskFileName and currPos in positions2SnpIndices:  # NOQA
                             genosChecked += 1
-                            if isBiallelic[positions2SnpIndices[currPos]] and calledGenoFracAtSite(genos[positions2SnpIndices[currPos]]) >= genoCutoff:
+                            if isBiallelic[positions2SnpIndices[currPos]] and calledGenoFracAtSite(genos[positions2SnpIndices[currPos]]) >= genoCutoff:  # NOQA
                                 isAccessibleArm.append(True)
                             else:
                                 isAccessibleArm.append(False)
@@ -401,13 +477,17 @@ def readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMas
                         currPos += 1
     if readingMasks and len(isAccessibleArm) >= totalPhysLen:
         if vcfForMaskFileName:
-            sys.stderr.write("processing sites and genos for %s\n" %(currChr))
-            windowedAccessibility, windowedGenoMask = getGenoMaskInfoInWins(isAccessibleArm, genos, positions, positions2SnpIndices, totalPhysLen, subWinLen, cutoff, genoCutoff)
+            sys.stderr.write("processing sites and genos for %s\n" % (currChr))
+            windowedAccessibility, windowedGenoMask = getGenoMaskInfoInWins(
+                isAccessibleArm, genos, positions,
+                positions2SnpIndices, totalPhysLen,
+                subWinLen, cutoff, genoCutoff)
             if windowedAccessibility:
                 isAccessible += windowedAccessibility
                 genoMaskInfo += windowedGenoMask
         else:
-            windowedAccessibility = getAccessibilityInWins(isAccessibleArm, totalPhysLen, subWinLen, cutoff)
+            windowedAccessibility = getAccessibilityInWins(
+                isAccessibleArm, totalPhysLen, subWinLen, cutoff)
             if windowedAccessibility:
                 isAccessible += windowedAccessibility
     if shuffle:
@@ -420,17 +500,21 @@ def readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMas
             random.shuffle(isAccessible)
 
     if len(isAccessible) == 0:
-        sys.exit("Error: Couldn't find a single window in our real data for masking that survived filters. May have to disable masking. AAARRRGGGGHHHHH!!!!!!")
+        sys.exit("Error: Couldn't find a single window in our \
+                real data for masking that survived filters. May have to \
+                disable masking.\n")
     for i in range(len(isAccessible)):
         assert len(isAccessible[i]) == totalPhysLen
-    sys.stderr.write("checked genotypes at %d sites\n" %(genosChecked))
+    sys.stderr.write("checked genotypes at %d sites\n" % (genosChecked))
     if vcfForMaskFileName:
         return isAccessible, genoMaskInfo
     else:
         return isAccessible
 
+
 def maskGeno():
     return np.array([-1, -1])
+
 
 def isMaskedGeno(genoMask):
     for allele in genoMask:
@@ -438,13 +522,16 @@ def isMaskedGeno(genoMask):
             return True
     return False
 
+
 def maskGenos(genosInWin, genoMaskForWin):
     for snpIndex in range(len(genosInWin)):
-        maskIndex = snpIndex % len(genoMaskForWin)#if we run out of snps we just bring it around for another pass!
+        # if we run out of snps we just bring it around for another pass!
+        maskIndex = snpIndex % len(genoMaskForWin)
         for j in range(len(genosInWin[snpIndex])):
-            if isMaskedGeno(genoMaskForWin[maskIndex,j]):
+            if isMaskedGeno(genoMaskForWin[maskIndex, j]):
                 genosInWin[snpIndex, j] = maskGeno()
     return genosInWin
+
 
 def readMaskDataForScan(maskFileName, chrArm):
     isAccessible = []
@@ -453,7 +540,7 @@ def readMaskDataForScan(maskFileName, chrArm):
         fopen = gzip.open
     else:
         fopen = open
-    with fopen(maskFileName,'rt') as maskFile:
+    with fopen(maskFileName, 'rt') as maskFile:
         for line in maskFile:
             if line.startswith(">"):
                 currChr = line[1:].strip()
@@ -470,6 +557,7 @@ def readMaskDataForScan(maskFileName, chrArm):
                             isAccessible.append(True)
     return isAccessible
 
+
 def normalizeFeatureVec(statVec):
     minVal = min(statVec)
     if minVal < 0:
@@ -482,6 +570,7 @@ def normalizeFeatureVec(statVec):
         for k in range(len(statVec)):
             normStatVec.append(statVec[k]/statSum)
     return normStatVec
+
 
 def maxFDA(pos, ac, start=None, stop=None, is_accessible=None):
     # check inputs
@@ -508,21 +597,31 @@ def maxFDA(pos, ac, start=None, stop=None, is_accessible=None):
         dafs.append(p1/float(n))
     return max(dafs)
 
-def calcAndAppendStatVal(alleleCounts, snpLocs, statName, subWinStart, subWinEnd, statVals, instanceIndex, subWinIndex, hapsInSubWin, unmasked, precomputedStats):
+
+def calcAndAppendStatVal(alleleCounts, snpLocs, statName,
+                         subWinStart, subWinEnd, statVals,
+                         instanceIndex, subWinIndex, hapsInSubWin,
+                         unmasked, precomputedStats):
     if statName == "tajD":
-        statVals[statName][instanceIndex].append(allel.stats.diversity.tajima_d(alleleCounts, pos=snpLocs, start=subWinStart, stop=subWinEnd))
+        statVals[statName][instanceIndex].append(allel.stats.diversity.tajima_d(  # NOQA
+            alleleCounts, pos=snpLocs, start=subWinStart, stop=subWinEnd))
     elif statName == "pi":
-        statVals[statName][instanceIndex].append(allel.stats.diversity.sequence_diversity(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
+        statVals[statName][instanceIndex].append(allel.stats.diversity.sequence_diversity(
+            snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
     elif statName == "thetaW":
-        statVals[statName][instanceIndex].append(allel.stats.diversity.watterson_theta(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
+        statVals[statName][instanceIndex].append(allel.stats.diversity.watterson_theta(
+            snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
     elif statName == "thetaH":
-        statVals[statName][instanceIndex].append(thetah(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
+        statVals[statName][instanceIndex].append(thetah(
+            snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
     elif statName == "fayWuH":
-        statVals[statName][instanceIndex].append(statVals["thetaH"][instanceIndex][subWinIndex]-statVals["pi"][instanceIndex][subWinIndex])
+        statVals[statName][instanceIndex].append(
+            statVals["thetaH"][instanceIndex][subWinIndex]-statVals["pi"][instanceIndex][subWinIndex])
     elif statName == "HapCount":
         statVals[statName][instanceIndex].append(len(hapsInSubWin.distinct()))
     elif statName == "maxFDA":
-        statVals[statName][instanceIndex].append(maxFDA(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
+        statVals[statName][instanceIndex].append(maxFDA(
+            snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
     elif statName == "H1":
         h1, h12, h123, h21 = allel.stats.selection.garud_h(hapsInSubWin)
         statVals["H1"][instanceIndex].append(h1)
@@ -537,61 +636,77 @@ def calcAndAppendStatVal(alleleCounts, snpLocs, statName, subWinStart, subWinEnd
         statVals["ZnS"][instanceIndex].append(shicstats.ZnS(r2Matrix)[0])
         statVals["Omega"][instanceIndex].append(shicstats.omega(r2Matrix)[0])
     elif statName == "RH":
-        rMatrixFlat = allel.stats.ld.rogers_huff_r(hapsInSubWin.to_genotypes(ploidy=2).to_n_alt())
+        rMatrixFlat = allel.stats.ld.rogers_huff_r(
+            hapsInSubWin.to_genotypes(ploidy=2).to_n_alt())
         rhAvg = rMatrixFlat.mean()
         statVals["RH"][instanceIndex].append(rhAvg)
         r2Matrix = squareform(rMatrixFlat ** 2)
         statVals["Omega"][instanceIndex].append(shicstats.omega(r2Matrix)[0])
     elif statName == "iHSMean":
-        vals = [x for x in precomputedStats["iHS"][subWinIndex] if not (math.isnan(x) or math.isinf(x))]
+        vals = [x for x in precomputedStats["iHS"][subWinIndex]
+                if not (math.isnan(x) or math.isinf(x))]
         if len(vals) == 0:
             statVals["iHSMean"][instanceIndex].append(0.0)
         else:
-            statVals["iHSMean"][instanceIndex].append(sum(vals)/float(len(vals)))
+            statVals["iHSMean"][instanceIndex].append(
+                sum(vals)/float(len(vals)))
     elif statName == "nSLMean":
-        vals = [x for x in precomputedStats["nSL"][subWinIndex] if not (math.isnan(x) or math.isinf(x))]
+        vals = [x for x in precomputedStats["nSL"][subWinIndex]
+                if not (math.isnan(x) or math.isinf(x))]
         if len(vals) == 0:
             statVals["nSLMean"][instanceIndex].append(0.0)
         else:
-            statVals["nSLMean"][instanceIndex].append(sum(vals)/float(len(vals)))
+            statVals["nSLMean"][instanceIndex].append(
+                sum(vals)/float(len(vals)))
     elif statName == "iHSMax":
-        vals = [x for x in precomputedStats["iHS"][subWinIndex] if not (math.isnan(x) or math.isinf(x))]
+        vals = [x for x in precomputedStats["iHS"][subWinIndex]
+                if not (math.isnan(x) or math.isinf(x))]
         if len(vals) == 0:
             maxVal = 0.0
         else:
             maxVal = max(vals)
         statVals["iHSMax"][instanceIndex].append(maxVal)
     elif statName == "nSLMax":
-        vals = [x for x in precomputedStats["nSL"][subWinIndex] if not (math.isnan(x) or math.isinf(x))]
+        vals = [x for x in precomputedStats["nSL"][subWinIndex]
+                if not (math.isnan(x) or math.isinf(x))]
         if len(vals) == 0:
             maxVal = 0.0
         else:
             maxVal = max(vals)
         statVals["nSLMax"][instanceIndex].append(maxVal)
     elif statName == "iHSOutFrac":
-        statVals["iHSOutFrac"][instanceIndex].append(getOutlierFrac(precomputedStats["iHS"][subWinIndex]))
+        statVals["iHSOutFrac"][instanceIndex].append(
+            getOutlierFrac(precomputedStats["iHS"][subWinIndex]))
     elif statName == "nSLOutFrac":
-        statVals["nSLOutFrac"][instanceIndex].append(getOutlierFrac(precomputedStats["nSL"][subWinIndex]))
+        statVals["nSLOutFrac"][instanceIndex].append(
+            getOutlierFrac(precomputedStats["nSL"][subWinIndex]))
     elif statName == "distVar":
-        dists = shicstats.pairwiseDiffs(hapsInSubWin)/float(unmasked[subWinStart-1:subWinEnd].count(True))
+        dists = shicstats.pairwiseDiffs(
+            hapsInSubWin)/float(unmasked[subWinStart-1:subWinEnd].count(True))
         statVals["distVar"][instanceIndex].append(np.var(dists, ddof=1))
         statVals["distSkew"][instanceIndex].append(scipy.stats.skew(dists))
         statVals["distKurt"][instanceIndex].append(scipy.stats.kurtosis(dists))
     elif statName in ["H12", "H123", "H2/H1", "Omega", "distVar", "distSkew", "distKurt"]:
         assert len(statVals[statName][instanceIndex]) == subWinIndex+1
 
+
 def calcAndAppendStatValDiplo(alleleCounts, snpLocs, statName, subWinStart, subWinEnd, statVals, instanceIndex, subWinIndex, genosInSubWin, unmasked):
     genosNAlt = genosInSubWin.to_n_alt()
     if statName == "tajD":
-        statVals[statName][instanceIndex].append(allel.stats.diversity.tajima_d(alleleCounts, pos=snpLocs, start=subWinStart, stop=subWinEnd))
+        statVals[statName][instanceIndex].append(allel.stats.diversity.tajima_d(
+            alleleCounts, pos=snpLocs, start=subWinStart, stop=subWinEnd))
     elif statName == "pi":
-        statVals[statName][instanceIndex].append(allel.stats.diversity.sequence_diversity(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
+        statVals[statName][instanceIndex].append(allel.stats.diversity.sequence_diversity(
+            snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
     elif statName == "thetaW":
-        statVals[statName][instanceIndex].append(allel.stats.diversity.watterson_theta(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
+        statVals[statName][instanceIndex].append(allel.stats.diversity.watterson_theta(
+            snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
     elif statName == "thetaH":
-        statVals[statName][instanceIndex].append(thetah(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
+        statVals[statName][instanceIndex].append(thetah(
+            snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
     elif statName == "fayWuH":
-        statVals[statName][instanceIndex].append(statVals["thetaH"][instanceIndex][subWinIndex]-statVals["pi"][instanceIndex][subWinIndex])
+        statVals[statName][instanceIndex].append(
+            statVals["thetaH"][instanceIndex][subWinIndex]-statVals["pi"][instanceIndex][subWinIndex])
     elif statName == "HapCount":
         statVals[statName][instanceIndex].append(len(hapsInSubWin.distinct()))
     elif statName == "nDiplos":
@@ -613,34 +728,44 @@ def calcAndAppendStatValDiplo(alleleCounts, snpLocs, statName, subWinStart, subW
             statVals["diplo_ZnS"][instanceIndex].append(0.0)
             statVals["diplo_Omega"][instanceIndex].append(0.0)
         else:
-            r2Matrix = allel.rogers_huff_r(genosNAlt,fill=0.0)
+            r2Matrix = allel.rogers_huff_r(genosNAlt, fill=0.0)
             statVals["diplo_ZnS"][instanceIndex].append(np.nanmean(r2Matrix))
             r2Matrix2 = squareform(r2Matrix ** 2)
-            statVals["diplo_Omega"][instanceIndex].append(shicstats.omega(r2Matrix2)[0])
+            statVals["diplo_Omega"][instanceIndex].append(
+                shicstats.omega(r2Matrix2)[0])
     elif statName == "distVar":
-        dists = shicstats.pairwiseDiffsDiplo(genosNAlt)/float(unmasked[subWinStart-1:subWinEnd].count(True))
+        dists = shicstats.pairwiseDiffsDiplo(
+            genosNAlt)/float(unmasked[subWinStart-1:subWinEnd].count(True))
         statVals["distVar"][instanceIndex].append(np.var(dists, ddof=1))
         statVals["distSkew"][instanceIndex].append(scipy.stats.skew(dists))
         statVals["distKurt"][instanceIndex].append(scipy.stats.kurtosis(dists))
     elif statName in ["diplo_H12", "diplo_H123", "diplo_H2/H1", "distVar", "distSkew", "distKurt", "diplo_Omega"]:
         if not len(statVals[statName][instanceIndex]) == subWinIndex+1:
-            print(statName,instanceIndex,subWinIndex+1)
-            print(statVals["diplo_H1"][instanceIndex], statVals["diplo_H12"][instanceIndex])
+            print(statName, instanceIndex, subWinIndex+1)
+            print(statVals["diplo_H1"][instanceIndex],
+                  statVals["diplo_H12"][instanceIndex])
             sys.exit()
+
 
 def calcAndAppendStatValForScanDiplo(alleleCounts, snpLocs, statName, subWinStart, subWinEnd, statVals, subWinIndex, genosInSubWin, unmasked):
     genosNAlt = genosInSubWin.to_n_alt()
     if statName == "tajD":
-        statVals[statName].append(allel.stats.diversity.tajima_d(alleleCounts, pos=snpLocs, start=subWinStart, stop=subWinEnd))
+        statVals[statName].append(allel.stats.diversity.tajima_d(
+            alleleCounts, pos=snpLocs, start=subWinStart, stop=subWinEnd))
     elif statName == "pi":
-        statVals[statName].append(allel.stats.diversity.sequence_diversity(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
+        statVals[statName].append(allel.stats.diversity.sequence_diversity(
+            snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
     elif statName == "thetaW":
-        statVals[statName].append(allel.stats.diversity.watterson_theta(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
+        statVals[statName].append(allel.stats.diversity.watterson_theta(
+            snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
     elif statName == "thetaH":
-        statVals[statName].append(thetah(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
+        statVals[statName].append(thetah(
+            snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
     elif statName == "fayWuH":
-        statVals[statName].append(statVals["thetaH"][subWinIndex]-statVals["pi"][subWinIndex])
+        statVals[statName].append(
+            statVals["thetaH"][subWinIndex]-statVals["pi"][subWinIndex])
     elif statName == "HapCount":
+        # AK: undefined variables
         statVals[statName].append(len(hapsInSubWin.distinct()))
     elif statName == "nDiplos":
         diplotypeCounts = shicstats.getHaplotypeFreqSpec(genosNAlt)
@@ -661,20 +786,22 @@ def calcAndAppendStatValForScanDiplo(alleleCounts, snpLocs, statName, subWinStar
             statVals["diplo_ZnS"].append(0.0)
             statVals["diplo_Omega"].append(0.0)
         else:
-            r2Matrix = allel.rogers_huff_r(genosNAlt,fill=0.0)
+            r2Matrix = allel.rogers_huff_r(genosNAlt, fill=0.0)
             statVals["diplo_ZnS"].append(np.nanmean(r2Matrix))
             r2Matrix2 = squareform(r2Matrix ** 2)
             statVals["diplo_Omega"].append(shicstats.omega(r2Matrix2)[0])
     elif statName == "distVar":
-        dists = shicstats.pairwiseDiffsDiplo(genosNAlt)/float(unmasked[subWinStart-1:subWinEnd].count(True))
+        dists = shicstats.pairwiseDiffsDiplo(
+            genosNAlt)/float(unmasked[subWinStart-1:subWinEnd].count(True))
         statVals["distVar"].append(np.var(dists, ddof=1))
         statVals["distSkew"].append(scipy.stats.skew(dists))
         statVals["distKurt"].append(scipy.stats.kurtosis(dists))
     elif statName in ["diplo_H12", "diplo_H123", "diplo_H2/H1", "distVar", "distSkew", "distKurt", "diplo_Omega"]:
         if not len(statVals[statName]) == subWinIndex+1:
-            print(statName,subWinIndex+1)
+            print(statName, subWinIndex+1)
             print(statVals["diplo_H1"], statVals["diplo_H12"])
             sys.exit()
+
 
 def getOutlierFrac(vals, cutoff=2.0):
     if len(vals) == 0:
@@ -691,6 +818,7 @@ def getOutlierFrac(vals, cutoff=2.0):
             return 0.0
         else:
             return num/float(denom)
+
 
 def appendStatValsForMonomorphic(statName, statVals, instanceIndex, subWinIndex):
     if statName == "tajD":
@@ -742,25 +870,33 @@ def appendStatValsForMonomorphic(statName, statVals, instanceIndex, subWinIndex)
         statVals["iHSMax"][instanceIndex].append(0.0)
     elif statName == "nSLMax":
         statVals["nSLMax"][instanceIndex].append(0.0)
-    elif statName in ["H12", "H123", "H2/H1","diplo_H12", "diplo_H123", "diplo_H2/H1", "Omega", "diplo_Omega"]:
+    elif statName in ["H12", "H123", "H2/H1", "diplo_H12", "diplo_H123", "diplo_H2/H1", "Omega", "diplo_Omega"]:
         #print(statName, statVals[statName][instanceIndex], subWinIndex+1)
         assert len(statVals[statName][instanceIndex]) == subWinIndex+1
     else:
         statVals[statName][instanceIndex].append(0.0)
 
+
 def calcAndAppendStatValForScan(alleleCounts, snpLocs, statName, subWinStart, subWinEnd, statVals, subWinIndex, hapsInSubWin, unmasked, precomputedStats):
     if statName == "tajD":
-        statVals[statName].append(allel.stats.diversity.tajima_d(alleleCounts, pos=snpLocs, start=subWinStart, stop=subWinEnd))
+        statVals[statName].append(allel.stats.diversity.tajima_d(
+            alleleCounts, pos=snpLocs, start=subWinStart, stop=subWinEnd))
     elif statName == "pi":
-        statVals[statName].append(allel.stats.diversity.sequence_diversity(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
+        statVals[statName].append(allel.stats.diversity.sequence_diversity(  # NOQA
+            snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))  # NOQA
     elif statName == "thetaW":
-        statVals[statName].append(allel.stats.diversity.watterson_theta(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
+        statVals[statName].append(allel.stats.diversity.watterson_theta(
+            snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))  # NOQA
     elif statName == "thetaH":
-        statVals[statName].append(thetah(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
+        statVals[statName].append(thetah(
+            snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))  # NOQA
     elif statName == "fayWuH":
-        statVals[statName].append(statVals["thetaH"][subWinIndex]-statVals["pi"][subWinIndex])
+        statVals[statName].append(
+            statVals["thetaH"][subWinIndex]-statVals["pi"][subWinIndex])
     elif statName == "maxFDA":
-        statVals[statName][instanceIndex].append(maxFDA(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
+        # AK: undefined variables
+        statVals[statName][instanceIndex].append(maxFDA(
+            snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
     elif statName == "HapCount":
         statVals[statName].append(len(hapsInSubWin.distinct()))
     elif statName == "H1":
@@ -777,48 +913,58 @@ def calcAndAppendStatValForScan(alleleCounts, snpLocs, statName, subWinStart, su
         statVals["ZnS"].append(shicstats.ZnS(r2Matrix)[0])
         statVals["Omega"].append(shicstats.omega(r2Matrix)[0])
     elif statName == "RH":
-        rMatrixFlat = allel.stats.ld.rogers_huff_r(hapsInSubWin.to_genotypes(ploidy=2).to_n_alt())
+        rMatrixFlat = allel.stats.ld.rogers_huff_r(
+            hapsInSubWin.to_genotypes(ploidy=2).to_n_alt())
         rhAvg = rMatrixFlat.mean()
         statVals["RH"].append(rhAvg)
         r2Matrix = squareform(rMatrixFlat ** 2)
         statVals["Omega"].append(shicstats.omega(r2Matrix)[0])
     elif statName == "iHSMean":
-        vals = [x for x in precomputedStats["iHS"][subWinIndex] if not (math.isnan(x) or math.isinf(x))]
+        vals = [x for x in precomputedStats["iHS"][subWinIndex]
+                if not (math.isnan(x) or math.isinf(x))]
         if len(vals) == 0:
             statVals["iHSMean"].append(0.0)
         else:
             statVals["iHSMean"].append(sum(vals)/float(len(vals)))
     elif statName == "nSLMean":
-        vals = [x for x in precomputedStats["nSL"][subWinIndex] if not (math.isnan(x) or math.isnan(x))]
+        vals = [x for x in precomputedStats["nSL"][subWinIndex]
+                if not (math.isnan(x) or math.isnan(x))]
         if len(vals) == 0:
             statVals["nSLMean"].append(0.0)
         else:
             statVals["nSLMean"].append(sum(vals)/float(len(vals)))
     elif statName == "iHSMax":
-        vals = [x for x in precomputedStats["iHS"][subWinIndex] if not (math.isnan(x) or math.isinf(x))]
+        vals = [x for x in precomputedStats["iHS"][subWinIndex]
+                if not (math.isnan(x) or math.isinf(x))]
         if len(vals) == 0:
             maxVal = 0.0
         else:
             maxVal = max(vals)
         statVals["iHSMax"].append(maxVal)
     elif statName == "nSLMax":
-        vals = [x for x in precomputedStats["nSL"][subWinIndex] if not (math.isnan(x) or math.isnan(x))]
+        vals = [x for x in precomputedStats["nSL"][subWinIndex]
+                if not (math.isnan(x) or math.isnan(x))]
         if len(vals) == 0:
             maxVal = 0.0
         else:
             maxVal = max(vals)
         statVals["nSLMax"].append(maxVal)
     elif statName == "iHSOutFrac":
-        statVals["iHSOutFrac"].append(getOutlierFrac(precomputedStats["iHS"][subWinIndex]))
+        statVals["iHSOutFrac"].append(getOutlierFrac(
+            precomputedStats["iHS"][subWinIndex]))
     elif statName == "nSLOutFrac":
-        statVals["nSLOutFrac"].append(getOutlierFrac(precomputedStats["nSL"][subWinIndex]))
+        statVals["nSLOutFrac"].append(getOutlierFrac(
+            precomputedStats["nSL"][subWinIndex]))
     elif statName == "distVar":
-        dists = shicstats.pairwiseDiffs(hapsInSubWin)/float(unmasked[subWinStart-1:subWinEnd].count(True))
+        dists = shicstats.pairwiseDiffs(
+            hapsInSubWin)/float(unmasked[subWinStart-1:subWinEnd].count(True))
         statVals["distVar"].append(np.var(dists, ddof=1))
         statVals["distSkew"].append(scipy.stats.skew(dists))
         statVals["distKurt"].append(scipy.stats.kurtosis(dists))
-    elif statName in ["H12", "H123", "H2/H1", "Omega", "distVar", "distSkew", "distKurt"]:
+    elif statName in ["H12", "H123", "H2/H1",
+                      "Omega", "distVar", "distSkew", "distKurt"]:
         assert len(statVals[statName]) == subWinIndex+1
+
 
 def appendStatValsForMonomorphicForScan(statName, statVals, subWinIndex):
     if statName == "tajD":
@@ -870,17 +1016,21 @@ def appendStatValsForMonomorphicForScan(statName, statVals, subWinIndex):
         statVals["iHSMax"].append(0.0)
     elif statName == "nSLMax":
         statVals["nSLMax"].append(0.0)
-    elif statName in ["H12", "H123", "H2/H1","diplo_H12", "diplo_H123", "diplo_H2/H1", "Omega", "diplo_Omega"]:
-        #print(statName, statVals[statName][instanceIndex], subWinIndex+1)
+    elif statName in ["H12", "H123", "H2/H1", "diplo_H12",
+                      "diplo_H123", "diplo_H2/H1", "Omega", "diplo_Omega"]:
+        # print(statName, statVals[statName][instanceIndex], subWinIndex+1)
         assert len(statVals[statName]) == subWinIndex+1
     else:
         statVals[statName].append(0.0)
+
 
 '''
 WARNING: this code assumes that the second column of ac gives the derived alleles;
 please ensure that this is the case (and that you are using polarized data) if
 are going to use values of this statistic for the classifier!!
-'''
+''' # NOQA
+
+
 def thetah(pos, ac, start=None, stop=None, is_accessible=None):
     # check inputs
     if not isinstance(pos, SortedIndex):
@@ -916,14 +1066,16 @@ def thetah(pos, ac, start=None, stop=None, is_accessible=None):
     h = h / n_bases
     return h
 
+
 def garudH1(hapCounts):
     h1 = 0.0
 
     for hapFreq in range(len(hapCounts), 0, -1):
-        pi = hapFreq/float(len(hapCounts));
-        h1 += hapCounts[hapFreq-1]*pi*pi;
+        pi = hapFreq/float(len(hapCounts))
+        h1 += hapCounts[hapFreq-1]*pi*pi
 
     return h1
+
 
 def garudH2(hapCounts):
     h2 = 0.0
@@ -939,6 +1091,7 @@ def garudH2(hapCounts):
                 h2 += hapCounts[hapFreq-1]*pi*pi
 
     return h2
+
 
 def garudH12(hapCounts):
     part1, part2 = 0.0, 0.0
