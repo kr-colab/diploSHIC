@@ -234,6 +234,7 @@ def windowVals(vals, subWinBounds,
 
 def readFa(faFileName, upper=False):
     seqData = {}
+    seq = ""
     if faFileName.endswith(".gz"):
         fopen = gzip.open
     else:
