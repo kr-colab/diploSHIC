@@ -72,7 +72,7 @@ print("#!/bin/bash")
 for sampleNumber, outDir, simTitle in [(trainingSampleNumber, trainingOutDir, "training data"), (testSampleNumber, testOutDir, "test data")]:
     partialStr = "-Pc 0.2 0.99"
     print("\n#generating %s\n" %(simTitle))
-    neutDiscoalCmd = "discoal %d %d %d -Pt %f %f -Pre %f %f%s -i 4" %(sampleSize, sampleNumber, numSites, thetaLow, thetaHigh, rhoMean, rhoMax, demogStr)
+    neutDiscoalCmd = "discoal %d %d %d -Pt %f %f -Pre %f %f%s" %(sampleSize, sampleNumber, numSites, thetaLow, thetaHigh, rhoMean, rhoMax, demogStr)
     print("%s > %s/Neut.msOut" %(neutDiscoalCmd, outDir))
     print("i=0")
     print("for x in 0.045454545454545456 0.13636363636363635 0.22727272727272727 0.3181818181818182 0.4090909090909091 0.5 0.5909090909090909 0.6818181818181818 0.7727272727272727 0.8636363636363636 0.9545454545454546;\ndo")
