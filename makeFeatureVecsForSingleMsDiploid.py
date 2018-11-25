@@ -59,10 +59,15 @@ if not maskFileName:
 else:
     drawWithReplacement = False
     sys.stderr.write("reading masking data...")
-    maskData, genoMaskData = readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMasking, shuffle=True, cutoff=unmaskedFracCutoff,
+    maskData = readMaskDataForTraining(maskFileName, totalPhysLen, subWinLen, chrArmsForMasking, shuffle=True, cutoff=unmaskedFracCutoff,
                                                      genoCutoff=unmaskedGenoFracCutoff, vcfForMaskFileName=vcfForMaskFileName, pop=popForMask,
                                                      sampleToPopFileName=sampleToPopFileName)
+    if vcfForMaskFileName:
+        maskData, genoMaskData = maskData
+    else:
+        genoMaskData = [None]*len(maskData)
     sys.stderr.write("done!\n")
+
     if len(maskData) < numInstances:
         sys.stderr.write("Warning: didn't get enough windows from masked data (needed %d; got %d); will draw with replacement!!\n" %(numInstances, len(maskData)))
         drawWithReplacement = True
@@ -124,8 +129,11 @@ for instanceIndex in range(numInstances):
         sys.stderr.write("processing snps for rep %d\n" %(instanceIndex))
         if maskFileName:
             preMaskCount = np.sum(genos.count_alleles())
-            sys.stderr.write("%d snps in the masking window for rep %d\n" %(len(genoMasks), instanceIndex))
-            genos = maskGenos(genos.subset(sel0=unmaskedSnpIndices), genoMasks)
+            if genoMasks == None:
+                genos = genos.subset(sel0=unmaskedSnpIndices)
+            else:
+                sys.stderr.write("%d snps in the masking window for rep %d\n" %(len(genoMasks), instanceIndex))
+                genos = maskGenos(genos.subset(sel0=unmaskedSnpIndices), genoMasks)
             alleleCountsUnmaskedOnly = genos.count_alleles()
             maskedCount = preMaskCount - np.sum(alleleCountsUnmaskedOnly)
             sys.stderr.write("%d of %d genotypes (%.2f%%) masked for rep %d\n" %(maskedCount, preMaskCount, 100*maskedCount/preMaskCount, instanceIndex))
