@@ -44,8 +44,7 @@ def diploidizeGenotypeArray(genos):
     numSnps, numSamples, numAlleles = genos.shape
     if numSamples % 2 != 0:
         sys.stderr.write(
-            "Diploidizing an odd-numbered sample. \
-             The last genome will be truncated.\n")
+            "Diploidizing an odd-numbered sample. The last genome will be truncated.\n")
         numSamples -= 1
     newGenos = []
     for i in range(numSnps):
@@ -99,8 +98,8 @@ def readStatsDafsComputeStandardizationBins(statAndDafFileName,
                                                        statistic=np.std,
                                                        bins=bins)
         statInfo[statName] = (mean_score, std_score, bins)
-        sys.stderr.write("mispolarized %d of %d (%f%%) \
-                      SNPs when standardizing scores in %s\n" % (
+        sys.stderr.write("mispolarized %d of %d (%f%%) "\
+                      "SNPs when standardizing scores in %s\n" % (
             misPolarizedSnps, totalSnps,
             100*misPolarizedSnps/float(totalSnps),
             statAndDafFileName))
@@ -182,8 +181,8 @@ def polarizeSnps(unmasked, positions, refAlleles, altAlleles, ancArm):
                 mapping.append([0, 1])  # no swap -- failed to polarize
         else:
             sys.exit(
-                "Found a character in ancestral chromosome \
-                 that is not 'A', 'C', 'G', 'T' or 'N' (all upper case)!\n")
+                "Found a character in ancestral chromosome "\
+                 "that is not 'A', 'C', 'G', 'T' or 'N' (all upper case)!\n")
     assert len(mapping) == len(positions)
     return mapping, unmasked
 
@@ -302,8 +301,8 @@ def getGenoMaskInfoInWins(isAccessibleArm, genos,
     lastWinEnd = len(isAccessibleArm) - len(isAccessibleArm) % winLen
     posIdx = 0
     snpIndicesInWins = []
-    sys.stderr.write("about to get geno masks from arm; \
-            len: %d, genos shape: %s, num snps: %d\n" % (
+    sys.stderr.write("about to get geno masks from arm; "\
+            "len: %d, genos shape: %s, num snps: %d\n" % (
         len(isAccessibleArm), genos.shape, len(positions)))
     calledFracs = []
     for winOffset in range(0, lastWinEnd, winLen):
@@ -323,8 +322,8 @@ def getGenoMaskInfoInWins(isAccessibleArm, genos,
             posIdx += 1
         snpIndicesInWins.append(snpIndicesInWin)
     if len(calledFracs) > 0:
-        sys.stderr.write("min calledFrac: %g; max calledFrac: %g; \
-                mean: %g; median: %g\n" % (
+        sys.stderr.write("min calledFrac: %g; max calledFrac: %g; "\
+                "mean: %g; median: %g\n" % (
             min(calledFracs), max(calledFracs),
             np.median(calledFracs), np.mean(calledFracs)))
     else:
@@ -347,8 +346,8 @@ def getGenoMaskInfoInWins(isAccessibleArm, genos,
                 badWinCount += 1
         winIndex += 1
     if windowedAcc:
-        sys.stderr.write("returning %d geno arrays, \
-        with an avg of %f snps\n" % (len(windowedGenoMask), sum(
+        sys.stderr.write("returning %d geno arrays, "\
+        "with an avg of %f snps\n" % (len(windowedGenoMask), sum(
             [len(windowedGenoMask[i]) for i in range(len(windowedGenoMask))])/float(len(windowedGenoMask))))  # NOQA
     else:
         sys.stderr.write("returning 0 geno arrays\n")
@@ -374,9 +373,9 @@ def extractGenosAndPositionsForArm(vcfFile, chroms,
         genos = allel.GenotypeArray(rawgenos).subset(sel1=sampleIndicesToKeep)
         if isHaploidVcfGenoArray(genos):
             sys.stderr.write(
-                "Detected haploid input for %s. \
-                 Converting into diploid individuals \
-                 (combining haplotypes in order).\n" % (currChr))
+                "Detected haploid input for %s. "\
+                 "Converting into diploid individuals "\
+                 "(combining haplotypes in order).\n" % (currChr))
             genos = diploidizeGenotypeArray(genos)
             sys.stderr.write("Done diploidizing %s\n" % (currChr))
         positions = np.extract(chroms == currChr, vcfFile["variants/POS"])
@@ -428,10 +427,8 @@ def readMaskDataForTraining(maskFileName, totalPhysLen,
                 if readingMasks and len(isAccessibleArm) >= totalPhysLen:
                     if vcfForMaskFileName:
                         sys.stderr.write(
-                            "processing sites \
-                             and genos for %s\n" % (currChr))
-                        # AK: there's a bug here.  genos, possitions, and positions2SnpIndicies
-                        # are undefined
+                            "processing sites "\
+                             "and genos for %s\n" % (currChr))
                         windowedAccessibility, windowedGenoMask = getGenoMaskInfoInWins(
                             isAccessibleArm, genos, positions,
                             positions2SnpIndices, totalPhysLen, subWinLen, cutoff, genoCutoff)
@@ -453,10 +450,9 @@ def readMaskDataForTraining(maskFileName, totalPhysLen,
                     readingMasks = False
                 isAccessibleArm = []
                 if vcfForMaskFileName and readingMasks:
-                    sys.stderr.write("checking geno mask \
-                            info from %s for %s\n" % (
+                    sys.stderr.write("checking geno mask "\
+                            "info from %s for %s\n" % (
                         vcfForMaskFileName, currChr))
-                    # AK: undefined variables again
                     genos, positions, positions2SnpIndices, isBiallelic = extractGenosAndPositionsForArm(
                         vcfFile, chroms, currChr, sampleIndicesToKeep)
             else:
@@ -464,10 +460,7 @@ def readMaskDataForTraining(maskFileName, totalPhysLen,
                     for char in line.strip().upper():
                         if char == 'N':
                             isAccessibleArm.append(False)
-                        # AK: logic unclear here:
-                        # are you intending a boolean
-                        # test on vcfForMaskFilename?
-                        elif vcfForMaskFileName and currPos in positions2SnpIndices:  # NOQA
+                        elif vcfForMaskFileName and currPos in positions2SnpIndices:
                             genosChecked += 1
                             if isBiallelic[positions2SnpIndices[currPos]] and calledGenoFracAtSite(genos[positions2SnpIndices[currPos]]) >= genoCutoff:  # NOQA
                                 isAccessibleArm.append(True)
@@ -501,9 +494,9 @@ def readMaskDataForTraining(maskFileName, totalPhysLen,
             random.shuffle(isAccessible)
 
     if len(isAccessible) == 0:
-        sys.exit("Error: Couldn't find a single window in our \
-                real data for masking that survived filters. May have to \
-                disable masking.\n")
+        sys.exit("Error: Couldn't find a single window in our "\
+                "real data for masking that survived filters. May have to "\
+                "disable masking.\n")
     for i in range(len(isAccessible)):
         assert len(isAccessible[i]) == totalPhysLen
     sys.stderr.write("checked genotypes at %d sites\n" % (genosChecked))
@@ -565,7 +558,7 @@ def normalizeFeatureVec(statVec):
         statVec = [x-minVal for x in statVec]
     normStatVec = []
     statSum = float(sum(statVec))
-    if statSum == 0:
+    if statSum == 0 or any(np.isinf(statVec)) or any(np.isnan(statVec)):
         normStatVec = [1.0/len(statVec)]*len(statVec)
     else:
         for k in range(len(statVec)):

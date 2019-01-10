@@ -129,11 +129,11 @@ for instanceIndex in range(numInstances):
         sys.stderr.write("processing snps for rep %d\n" %(instanceIndex))
         if maskFileName:
             preMaskCount = np.sum(genos.count_alleles())
-            if genoMasks == None:
-                genos = genos.subset(sel0=unmaskedSnpIndices)
-            else:
+            if genoMasks:
                 sys.stderr.write("%d snps in the masking window for rep %d\n" %(len(genoMasks), instanceIndex))
                 genos = maskGenos(genos.subset(sel0=unmaskedSnpIndices), genoMasks)
+            else:
+                genos = genos.subset(sel0=unmaskedSnpIndices)
             alleleCountsUnmaskedOnly = genos.count_alleles()
             maskedCount = preMaskCount - np.sum(alleleCountsUnmaskedOnly)
             sys.stderr.write("%d of %d genotypes (%.2f%%) masked for rep %d\n" %(maskedCount, preMaskCount, 100*maskedCount/preMaskCount, instanceIndex))
