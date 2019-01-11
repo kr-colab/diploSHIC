@@ -69,7 +69,6 @@ if maskFileName.lower() in ["none", "false"]:
     unmasked = [True] * chrLen
 else:
     unmasked = readMaskDataForScan(maskFileName, chrArm)
-    print(len(unmasked), chrLen)
     assert len(unmasked) == chrLen
 
 if statFileName.lower() in ["none", "false"]:
