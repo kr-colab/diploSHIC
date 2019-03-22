@@ -310,8 +310,12 @@ elif argsDict['mode'] == 'predict':
     outputFile = open(argsDict['predictFileOutput'],'w')
     outputFile.write('chrom\tclassifiedWinStart\tclassifiedWinEnd\tbigWinRange\tpredClass\tprob(neutral)\tprob(likedSoft)\tprob(linkedHard)\tprob(soft)\tprob(hard)\n')
     for index, row in x_df.iterrows():
-        outputFile.write('{}\t{}\t{}\t{}\t{}\t{:f}\t{:f}\t{:f}\t{:f}\t{:f}\n'.format( row['chrom'],row['classifiedWinStart'],row['classifiedWinEnd'],row['bigWinRange'], \
-        classDict[predictions[index]],preds[index][1],preds[index][3],preds[index][4],preds[index][2],preds[index][0]))
+        if argsDict['simData']:
+            outputFile.write('{}\t{:f}\t{:f}\t{:f}\t{:f}\t{:f}\n'.format(classDict[predictions[index]],preds[index][1],preds[index][3],preds[index][4], \
+                preds[index][2],preds[index][0]))
+        else:
+            outputFile.write('{}\t{}\t{}\t{}\t{}\t{:f}\t{:f}\t{:f}\t{:f}\t{:f}\n'.format( row['chrom'],row['classifiedWinStart'],row['classifiedWinEnd'],row['bigWinRange'], \
+                classDict[predictions[index]],preds[index][1],preds[index][3],preds[index][4],preds[index][2],preds[index][0]))
     outputFile.close
     print("{} predictions complete".format(index+1))
 elif argsDict['mode'] == 'fvecSim':
