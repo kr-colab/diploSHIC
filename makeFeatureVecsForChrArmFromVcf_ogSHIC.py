@@ -105,7 +105,7 @@ snpIndicesToKeep = [i for i in range(len(positions)) if unmasked[positions[i]-1]
 genos = allel.GenotypeArray(genos.subset(sel0=snpIndicesToKeep))
 positions = [positions[i] for i in snpIndicesToKeep]
 alleleCounts = allel.AlleleCountsArray([[alleleCounts[i][0], max(alleleCounts[i][1:])] for i in snpIndicesToKeep])
-if not ancestralArmFaFileName.lower in ["none", "false"]:
+if not ancestralArmFaFileName.lower() in ["none", "false"]:
     mapping = [mapping[i] for i in snpIndicesToKeep]
     alleleCounts = alleleCounts.map_alleles(mapping)
 haps = genos.to_haplotypes()
