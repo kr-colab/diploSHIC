@@ -889,7 +889,7 @@ def calcAndAppendStatValForScan(alleleCounts, snpLocs, statName, subWinStart, su
             statVals["thetaH"][subWinIndex]-statVals["pi"][subWinIndex])
     elif statName == "maxFDA":
         # AK: undefined variables
-        statVals[statName][instanceIndex].append(maxFDA(
+        statVals[statName].append(maxFDA(
             snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
     elif statName == "HapCount":
         statVals[statName].append(len(hapsInSubWin.distinct()))
