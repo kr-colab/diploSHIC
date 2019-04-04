@@ -97,7 +97,7 @@ if not ancestralArmFaFileName.lower() in ["none", "false"]:
     # this will also remove sites that could not be polarized
     mapping, unmasked = polarizeSnps(unmasked, positions, refAlleles, altAlleles, ancArm)
     sys.stderr.write("took %s seconds\n" %(time.clock()-startTime))
-    statNames = ["pi", "thetaW", "tajD", "thetaH", "fayWuH", "HapCount", "H1", "H12", "H2/H1", "ZnS", "Omega", "distVar", "distSkew", "distKurt"]
+    statNames = ["pi", "thetaW", "tajD", "thetaH", "fayWuH", "maxFDA", "HapCount", "H1", "H12", "H2/H1", "ZnS", "Omega", "distVar", "distSkew", "distKurt"]
 else:
     statNames = ["pi", "thetaW", "tajD", "HapCount", "H1", "H12", "H2/H1", "ZnS", "Omega", "distVar", "distSkew", "distKurt"]
 
