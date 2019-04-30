@@ -722,7 +722,7 @@ def calcAndAppendStatValDiplo(alleleCounts, snpLocs, statName, subWinStart, subW
             statVals["diplo_ZnS"][instanceIndex].append(0.0)
             statVals["diplo_Omega"][instanceIndex].append(0.0)
         else:
-            r2Matrix = allel.rogers_huff_r(genosNAlt, fill=0.0)
+            r2Matrix = allel.stats.ld.rogers_huff_r(genosNAlt)
             statVals["diplo_ZnS"][instanceIndex].append(np.nanmean(r2Matrix))
             r2Matrix2 = squareform(r2Matrix ** 2)
             statVals["diplo_Omega"][instanceIndex].append(
@@ -780,7 +780,7 @@ def calcAndAppendStatValForScanDiplo(alleleCounts, snpLocs, statName, subWinStar
             statVals["diplo_ZnS"].append(0.0)
             statVals["diplo_Omega"].append(0.0)
         else:
-            r2Matrix = allel.rogers_huff_r(genosNAlt, fill=0.0)
+            r2Matrix = allel.stats.ld.rogers_huff_r(genosNAlt)
             statVals["diplo_ZnS"].append(np.nanmean(r2Matrix))
             r2Matrix2 = squareform(r2Matrix ** 2)
             statVals["diplo_Omega"].append(shicstats.omega(r2Matrix2)[0])
@@ -889,7 +889,7 @@ def calcAndAppendStatValForScan(alleleCounts, snpLocs, statName, subWinStart, su
             statVals["thetaH"][subWinIndex]-statVals["pi"][subWinIndex])
     elif statName == "maxFDA":
         # AK: undefined variables
-        statVals[statName][instanceIndex].append(maxFDA(
+        statVals[statName].append(maxFDA(
             snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked))
     elif statName == "HapCount":
         statVals[statName].append(len(hapsInSubWin.distinct()))

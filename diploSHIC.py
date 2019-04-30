@@ -32,6 +32,7 @@ parser_b.add_argument('modelWeights', help='path to CNN weights .h5 file')
 parser_b.add_argument('predictFile', help='input file to predict')
 parser_b.add_argument('predictFileOutput', help='output file name')
 parser_b.add_argument('--numSubWins', type=int, help='number of subwindows that our chromosome is divided into (default = 11)', default=11)
+parser_b.add_argument('--simData', help='Are we using simulated input data wihout coordinates?', action="store_true")
 parser_b.set_defaults(mode='predict')
 parser_b._positionals.title = 'required arguments'
 
@@ -274,7 +275,10 @@ elif argsDict['mode'] == 'predict':
     
     #import data from predictFile
     x_df=pd.read_table(argsDict['predictFile'])
-    testX = x_df[list(x_df)[4:]].as_matrix()
+    if argsDict['simData']:
+        testX = x_df[list(x_df)[:]].as_matrix()
+    else:
+        testX = x_df[list(x_df)[4:]].as_matrix()
     nDims = int(testX.shape[1]/numSubWins)
     np.reshape(testX,(testX.shape[0],nDims,numSubWins))
     #add channels
@@ -306,8 +310,12 @@ elif argsDict['mode'] == 'predict':
     outputFile = open(argsDict['predictFileOutput'],'w')
     outputFile.write('chrom\tclassifiedWinStart\tclassifiedWinEnd\tbigWinRange\tpredClass\tprob(neutral)\tprob(likedSoft)\tprob(linkedHard)\tprob(soft)\tprob(hard)\n')
     for index, row in x_df.iterrows():
-        outputFile.write('{}\t{}\t{}\t{}\t{}\t{:f}\t{:f}\t{:f}\t{:f}\t{:f}\n'.format( row['chrom'],row['classifiedWinStart'],row['classifiedWinEnd'],row['bigWinRange'], \
-        classDict[predictions[index]],preds[index][1],preds[index][3],preds[index][4],preds[index][2],preds[index][0]))
+        if argsDict['simData']:
+            outputFile.write('{}\t{:f}\t{:f}\t{:f}\t{:f}\t{:f}\n'.format(classDict[predictions[index]],preds[index][1],preds[index][3],preds[index][4], \
+                preds[index][2],preds[index][0]))
+        else:
+            outputFile.write('{}\t{}\t{}\t{}\t{}\t{:f}\t{:f}\t{:f}\t{:f}\t{:f}\n'.format( row['chrom'],row['classifiedWinStart'],row['classifiedWinEnd'],row['bigWinRange'], \
+                classDict[predictions[index]],preds[index][1],preds[index][3],preds[index][4],preds[index][2],preds[index][0]))
     outputFile.close
     print("{} predictions complete".format(index+1))
 elif argsDict['mode'] == 'fvecSim':
