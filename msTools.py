@@ -54,21 +54,24 @@ def msPositionsToIntegerPositions(positions, totalPhysLen):
     return newPositions
 
 
-def msRepToHaplotypeArrayIn(samples, positions, totalPhysLen):
+def msRepToHaplotypeArrayIn(samples, positions, totalPhysLen, transposeHaps, discretizePositions=True):
     for i in range(len(samples)):
         assert len(samples[i]) == len(positions)
+    if discretizePositions:
+        positions = msPositionsToIntegerPositions(positions, totalPhysLen)
 
-    positions = msPositionsToIntegerPositions(positions, totalPhysLen)
-
-    hapArrayIn = []
-    for j in range(len(positions)):
-        hapArrayIn.append([])
-        for i in range(len(samples)):
-            hapArrayIn[j].append(samples[i][j])
+    if transposeHaps:
+        hapArrayIn = []
+        for j in range(len(positions)):
+            hapArrayIn.append([])
+            for i in range(len(samples)):
+                hapArrayIn[j].append(samples[i][j])
+    else:
+        hapArrayIn = samples
     return hapArrayIn, positions
 
 
-def msOutToHaplotypeArrayIn(msOutputFileName, totalPhysLen):
+def msOutToHaplotypeArrayIn(msOutputFileName, totalPhysLen, discretizePositions=True):
     if msOutputFileName == "stdin":
         isFile = False
         msStream = sys.stdin
@@ -118,7 +121,8 @@ def msOutToHaplotypeArrayIn(msOutputFileName, totalPhysLen):
             if len(samples) != numSamples:
                 raise Exception
             hapArrayIn, positions = msRepToHaplotypeArrayIn(
-                samples, positions, totalPhysLen)
+                samples, positions, totalPhysLen,
+                discretizePositions=discretizePositions)
         hapArraysIn.append(hapArrayIn)
         positionArrays.append(positions)
         line = msStream.readline()
@@ -159,7 +163,7 @@ def closeMsOutFile(fileInfoTuple):
         msStream.close()
 
 
-def readNextMsRepToHaplotypeArrayIn(fileInfoTuple, numSamples, totalPhysLen):
+def readNextMsRepToHaplotypeArrayIn(fileInfoTuple, numSamples, totalPhysLen, transposeHaps=True, discretizePositions=True):
     msStream, isFile = fileInfoTuple
 
     # advance to next simulation
@@ -192,6 +196,10 @@ def readNextMsRepToHaplotypeArrayIn(fileInfoTuple, numSamples, totalPhysLen):
         if len(samples) != numSamples:
             raise Exception
         hapArrayIn, positions = msRepToHaplotypeArrayIn(
-            samples, positions, totalPhysLen)
+            samples, positions, totalPhysLen, transposeHaps,
+            discretizePositions=discretizePositions)
 
     return hapArrayIn, positions
+
+def readNextMsRepToGameteStrs(fileInfoTuple, numSamples, totalPhysLen, discretizePositions=True):
+    return readNextMsRepToHaplotypeArrayIn(fileInfoTuple, numSamples, totalPhysLen, transposeHaps=False, discretizePositions=discretizePositions)
