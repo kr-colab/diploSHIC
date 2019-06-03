@@ -255,7 +255,7 @@ if argsDict['mode'] == 'train':
     datagen.fit(X_train)
     validation_gen.fit(X_valid)
     test_gen.fit(X_test)
-    start = time.clock()
+    start = time.time()
     model.fit_generator(datagen.flow(X_train, Y_train, batch_size=32), \
                         steps_per_epoch=len(X_train) / 32, epochs=epochOption,verbose=1, \
                         callbacks=callbacks_list, \
@@ -263,7 +263,7 @@ if argsDict['mode'] == 'train':
                         validation_steps=len(X_test)/32)
     #model.fit(X_train, Y_train, batch_size=32, epochs=100,validation_data=(X_test,Y_test),callbacks=callbacks_list, verbose=1)
     score = model.evaluate_generator(test_gen.flow(X_test,Y_test, batch_size=32),len(Y_test)/32)
-    sys.stderr.write("total time spent fitting and evaluating: %f secs\n" %(time.clock()-start))
+    sys.stderr.write("total time spent fitting and evaluating: %f secs\n" %(time.time()-start))
 
     print("evaluation on test set:")
     print("diploSHIC loss: %f" % score[0])
