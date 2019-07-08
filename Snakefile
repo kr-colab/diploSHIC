@@ -1,0 +1,146 @@
+
+"""
+Snakefile for running a diploSHIC analysis
+
+Simply running `snakemake` will run all analysis 
+defined by the arguments above.
+
+"""
+
+import pathlib
+import sys
+
+import numpy as np
+
+
+seed = 12345
+np.random.seed(seed)
+
+replicates = 2
+
+seed_array = np.random.random_integers(1,2**31,replicates)
+
+# change to the correct locations of discoal and diploSHIC
+discoal_exec = "discoal/discoal"
+diploSHIC_exec = "diploSHIC/diploSHIC.py"
+
+#some parameters that should probably be moved to a .json file
+trainSampleNumber = 10 #the number of simulation replicates we want to generate for each file in our training set
+testSampleNumber = 10 #the number of simulations to create for each file in the test set
+sampleSize = 10 #the number of individuals in our population sample
+numSites = 55000 #total number of sites in our simulated window (i.e. S/HIC's subwindow size * 11)
+u = 3.27e-9 #per-site mutation rate (used to calculate mean theta)
+gensPerYear = 10.0 #number of generations per year
+maxSoftSweepInitFreq = 0.1 #maximum initial selected frequency for soft sweeps
+tauHigh = 0.05 #maximum FIXATION (not mutation) time (in units of 4N generations ago) in the past
+rhoOverTheta = 5.0 #crossover rate over mut rate (used to calculate mean rho)
+
+ne0=1e06
+N0 = ne0
+thetaMean=4*N0*u*numSites
+rhoMean = thetaMean * rhoOverTheta
+thetaLow = (2*thetaMean)/11.0
+thetaHigh = 10*thetaLow
+rhoMax = 3 * rhoMean
+
+totSimRuns = 10
+
+neutString = f"{discoal_exec} {sampleSize} {testSampleNumber} {numSites} -Pt {thetaLow} {thetaHigh} -Pre {rhoMean} {rhoMax} "
+# TODO add demography string to the neutral string above
+alphaHigh = 2*N0*0.005 # max selection coefficient s is 0.005
+alphaLow = 2*N0*0.0001 # mininum selection coefficient s at 0.0001
+selString = f"{discoal_exec} {sampleSize} {trainSampleNumber} {numSites} -Pt {thetaLow} {thetaHigh} -Pre {rhoMean} {rhoMax} "
+selStr = selString + " -ws 0 -Pa %f %f -Pu 0 %f" %(alphaLow, alphaHigh, tauHigh)
+
+# partialSelStr = " -ws 0 -Pa %f %f" %(alphaLow, alphaHigh)
+softStr = " -Pf 0 %f" %(maxSoftSweepInitFreq)
+
+
+sweep_locs = [0.045454545454545456, 0.13636363636363635, 0.22727272727272727, 0.3181818181818182, 0.4090909090909091, \
+	0.5, 0.5909090909090909, 0.6818181818181818, 0.7727272727272727, 0.8636363636363636, 0.9545454545454546]
+
+
+rule all:
+    input:
+        expand("{tDir}/discoal.{mod}.{x}.{i}.out.fvec", mod = ["neut", "hard", "soft"], tDir = ["train", "test"], x = range(11), i = range(totSimRuns)),
+        expand("{tDir}/{mod}_{x}.fvec", mod = ["hard", "soft"], tDir = ["train", "test"], x = range(11)),
+        expand("{tDir}/neut_0.fvec", tDir = ["train", "test"]),
+        expand("trainingSets/{cl}.fvec", cl = ["hard", "linkedHard", "soft", "linkedSoft", "neut"]),
+        "trained_model.json",
+        "trained_model.weights.hdf5"
+
+
+rule discoal_neutral_simulation:
+    message: "simulation stage"
+    output:
+        "{tDir}/discoal.neut.{i}.out"
+    shell:
+        neutString + " > {output}"
+
+
+rule discoal_hard_simulation:
+    message: "hard simulation stage"
+    output:
+        "{tDir}/discoal.hard.{x}.{i}.out"
+    run:
+        cmd = selStr + " -x "+str(sweep_locs[int(wildcards.x)])+" > {output}"
+        shell(cmd)
+
+rule discoal_soft_simulation:
+    message: "soft simulation stage"
+    output:
+        "{tDir}/discoal.soft.{x}.{i}.out"
+    run:
+        cmd = selStr + softStr + " -x "+str(sweep_locs[int(wildcards.x)])+" > {output}"
+        shell(cmd)
+
+rule calc_sim_fvs:
+    input:
+        "{tDir}/discoal.{mod}.{x}.{i}.out"
+    output:
+        "{tDir}/discoal.{mod}.{x}.{i}.out.fvec"
+    run:
+        cmd = f"python {diploSHIC_exec} fvecSim haploid {input} {output} --totalPhysLen={numSites} --maskFileName none --chrArmsForMasking none"
+        shell(cmd)
+
+rule concat_fvecs:
+    input:
+        expand("{tDir}/discoal.{mod}.{x}.{i}.out.fvec", mod = ["neut", "hard", "soft"], tDir = ["train", "test"], x = range(11), i = range(totSimRuns))
+    output:
+        expand("{tDir}/{mod}_{x}.fvec", tDir = ["train", "test"], mod = ["hard", "soft"], x = range(11)),
+        expand("{tDir}/neut_0.fvec", tDir = ["train", "test"])
+    run:
+        for t in ["train", "test"]:
+            cmd = "cat {t}/discoal.neut.0.0.out.fvec > {t}/neut_0.fvec"
+            for ii in range(1, totSimRuns):
+                cmd += f" && tail -n +2 {t}/discoal.neut.0.{ii}.out.fvec >> {t}/neut_0.fvec"
+            for model in ["hard", "soft"]:
+                for xx in range(11):
+                    cmd += f" && cat {t}/discoal.{model}.{xx}.0.out.fvec > {t}/{model}_{xx}.fvec"
+                    for i in range(1,totSimRuns):
+                        cmd += f" && tail -n +2 {t}/discoal.{model}.{xx}.{ii}.out.fvec >> {t}/{model}_{xx}.fvec"
+            shell(cmd)
+
+rule make_training_sets:
+    input:
+        rules.concat_fvecs.output
+    output:
+        expand("trainingSets/{cl}.fvec", cl = ["hard", "linkedHard", "soft", "linkedSoft", "neut"])
+    run:
+        cmd = f"python {diploSHIC_exec} makeTrainingSets train/neut_0.fvec train/soft train/hard 5 0,1,2,3,4,6,7,8,9,10 trainingSets/"
+        shell(cmd)
+
+rule train_classifier:
+    input:
+        rules.make_training_sets.output
+    output:
+        "trained_model.json",
+        "trained_model.weights.hdf5"
+    run:
+        cmd = f"python {diploSHIC_exec} train trainingSets/ trainingSets/ trained_model --epochs=10"
+        shell(cmd)
+
+rule clean:
+    shell:
+        "rm -rf test/ train/ trained_model* \
+            .snakemake slurm*"
