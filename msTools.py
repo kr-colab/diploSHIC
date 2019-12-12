@@ -122,7 +122,7 @@ def msOutToHaplotypeArrayIn(msOutputFileName, totalPhysLen, discretizePositions=
             if len(samples) != numSamples:
                 raise Exception
             hapArrayIn, positions = msRepToHaplotypeArrayIn(
-                samples, positions, totalPhysLen, True
+                samples, positions, totalPhysLen, True,
                 discretizePositions=discretizePositions)
         hapArraysIn.append(hapArrayIn)
         positionArrays.append(positions)
