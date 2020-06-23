@@ -724,7 +724,7 @@ def calcAndAppendStatValDiplo(alleleCounts, snpLocs, statName, subWinStart, subW
         else:
             r2Matrix = allel.stats.ld.rogers_huff_r(genosNAlt)
             r2Matrix2 = squareform(r2Matrix ** 2)
-            statVals["diplo_ZnS"][instanceIndex].append(np.nanmean(r2Matrix))
+            statVals["diplo_ZnS"][instanceIndex].append(np.nanmean(r2Matrix2))
             statVals["diplo_Omega"][instanceIndex].append(
                 shicstats.omega(r2Matrix2)[0])
     elif statName == "distVar":
