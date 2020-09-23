@@ -105,7 +105,7 @@ header = "\t".join(header)
 statVals = {}
 for statName in statNames:
     statVals[statName] = []
-start = time.clock()
+start = time.perf_counter()
 numInstancesDone = 0
 for instanceIndex in range(numInstances):
     hapArrayIn, positionArray = msTools.readNextMsRepToHaplotypeArrayIn(
@@ -206,5 +206,5 @@ if statFiles:
         statFiles[subWinIndex].close()
 
 sys.stderr.write("total time spent calculating summary statistics and generating feature vectors: %f secs\n" % ( # NOQA
-    time.clock()-start))
+    time.perf_counter()-start))
 msTools.closeMsOutFile(trainingDataFileObj)

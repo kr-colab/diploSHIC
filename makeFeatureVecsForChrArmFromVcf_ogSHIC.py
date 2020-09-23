@@ -91,12 +91,12 @@ for i in range(len(isBiallelic)):
 if not ancestralArmFaFileName.lower() in ["none", "false"]:
     sys.stderr.write("polarizing snps\n")
     ancArm = readFaArm(ancestralArmFaFileName, chrArm).upper()
-    startTime = time.clock()
+    startTime = time.perf_counter()
     #NOTE: mapping specifies which alleles to swap counts for based on polarization; leaves unpolarized snps alone
     #NOTE: those snps need to be filtered later on (as done below)!
     # this will also remove sites that could not be polarized
     mapping, unmasked = polarizeSnps(unmasked, positions, refAlleles, altAlleles, ancArm)
-    sys.stderr.write("took %s seconds\n" %(time.clock()-startTime))
+    sys.stderr.write("took %s seconds\n" %(time.perf_counter()-startTime))
     statNames = ["pi", "thetaW", "tajD", "thetaH", "fayWuH", "maxFDA", "HapCount", "H1", "H12", "H2/H1", "ZnS", "Omega", "distVar", "distSkew", "distKurt"]
 else:
     statNames = ["pi", "thetaW", "tajD", "HapCount", "H1", "H12", "H2/H1", "ZnS", "Omega", "distVar", "distSkew", "distKurt"]
@@ -127,7 +127,7 @@ statVals = {}
 for statName in statNames:
     statVals[statName] = []
 
-startTime = time.clock()
+startTime = time.perf_counter()
 goodSubWins = []
 lastSubWinEnd = chrLen - chrLen % subWinSize
 snpIndicesInSubWins = getSnpIndicesInSubWins(subWinSize, lastSubWinEnd, positions)
@@ -168,4 +168,4 @@ for subWinStart in range(1, lastSubWinStart+1, subWinSize):
 if statFileName:
     statFile.close()
 outFile.close()
-sys.stderr.write("completed in %g seconds\n" %(time.clock()-startTime))
+sys.stderr.write("completed in %g seconds\n" %(time.perf_counter()-startTime))
