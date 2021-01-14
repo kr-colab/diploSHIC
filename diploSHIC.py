@@ -240,14 +240,14 @@ if argsDict['mode'] == 'train':
                   metrics=['accuracy'])
 
     # define early stopping callback
-    earlystop = EarlyStopping(monitor='val_acc', min_delta=0.001, patience=5, \
+    earlystop = EarlyStopping(monitor='val_accuracy', min_delta=0.001, patience=5, \
                               verbose=1, mode='auto')
     
     model_json = model.to_json()
     with open(outputModel+".json", "w") as json_file:
         json_file.write(model_json)
     modWeightsFilepath=outputModel+".weights.hdf5"
-    checkpoint = ModelCheckpoint(modWeightsFilepath, monitor='val_acc', verbose=1, save_best_only=True, save_weights_only=True, mode='auto')
+    checkpoint = ModelCheckpoint(modWeightsFilepath, monitor='val_accuracy', verbose=1, save_best_only=True, save_weights_only=True, mode='auto')
 
     callbacks_list = [earlystop,checkpoint]
     #callbacks_list = [earlystop] #turning off checkpointing-- just want accuracy assessment
