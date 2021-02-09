@@ -35,7 +35,7 @@ maxSoftSweepInitFreq = 0.1 #maximum initial selected frequency for soft sweeps
 tauHigh = 0.05 #maximum FIXATION (not mutation) time (in units of 4N generations ago) in the past
 rhoOverTheta = 5.0 #crossover rate over mut rate (used to calculate mean rho)
 
-ne0=1e06
+ne0=1e05
 N0 = ne0
 thetaMean=4*N0*u*numSites
 rhoMean = thetaMean * rhoOverTheta
