@@ -122,7 +122,7 @@ statVals = {}
 for statName in statNames:
     statVals[statName] = []
 
-startTime = time.clock()
+startTime = time.perf_counter()
 goodSubWins = []
 lastSubWinEnd = chrLen - chrLen % subWinSize
 snpIndicesInSubWins = getSnpIndicesInSubWins(subWinSize, lastSubWinEnd, positions)
@@ -160,4 +160,4 @@ for subWinStart in range(1, lastSubWinStart+1, subWinSize):
 if statFileName:
     statFile.close()
 outFile.close()
-sys.stderr.write("completed in %g seconds\n" %(time.clock()-startTime))
+sys.stderr.write("completed in %g seconds\n" %(time.perf_counter()-startTime))

@@ -99,7 +99,7 @@ header = "\t".join(header)
 statVals = {}
 for statName in statNames:
     statVals[statName] = []
-start = time.clock()
+start = time.perf_counter()
 numInstancesDone = 0
 sys.stderr.write("ready to process sim reps. here we go!\n")
 for instanceIndex in range(numInstances):
@@ -158,7 +158,7 @@ for instanceIndex in range(numInstances):
                 for statName in statNames:
                     appendStatValsForMonomorphic(statName, statVals, instanceIndex, subWinIndex)
     numInstancesDone += 1
-    sys.stderr.write("finished %d reps after %f seconds\n" %(numInstancesDone, time.clock()-start))
+    sys.stderr.write("finished %d reps after %f seconds\n" %(numInstancesDone, time.perf_counter()-start))
 
 if numInstancesDone != numInstances:
     sys.exit("Expected %d reps but only processed %d. Perhaps we are using malformed simulation output!\n" %(numInstancesDone, numInstances))
@@ -189,5 +189,5 @@ if statFiles:
     for subWinIndex in range(numSubWins):
         statFiles[subWinIndex].close()
 
-sys.stderr.write("total time spent calculating summary statistics and generating feature vectors: %f secs\n" %(time.clock()-start))
+sys.stderr.write("total time spent calculating summary statistics and generating feature vectors: %f secs\n" %(time.perf_counter()-start))
 closeMsOutFile(trainingDataFileObj)
