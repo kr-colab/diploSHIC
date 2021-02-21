@@ -316,7 +316,7 @@ elif argsDict['mode'] == 'predict':
         else:
             outputFile.write('{}\t{}\t{}\t{}\t{}\t{:f}\t{:f}\t{:f}\t{:f}\t{:f}\n'.format( row['chrom'],row['classifiedWinStart'],row['classifiedWinEnd'],row['bigWinRange'], \
                 classDict[predictions[index]],preds[index][1],preds[index][3],preds[index][4],preds[index][2],preds[index][0]))
-    outputFile.close
+    outputFile.close()
     print("{} predictions complete".format(index+1))
 elif argsDict['mode'] == 'fvecSim':
     if argsDict['shicMode'].lower() == 'diploid':
