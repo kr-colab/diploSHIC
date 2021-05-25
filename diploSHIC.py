@@ -276,9 +276,9 @@ elif argsDict['mode'] == 'predict':
     #import data from predictFile
     x_df=pd.read_table(argsDict['predictFile'])
     if argsDict['simData']:
-        testX = x_df[list(x_df)[:]].as_matrix()
+        testX = x_df[list(x_df)[:]].to_numpy()
     else:
-        testX = x_df[list(x_df)[4:]].as_matrix()
+        testX = x_df[list(x_df)[4:]].to_numpy()
     nDims = int(testX.shape[1]/numSubWins)
     np.reshape(testX,(testX.shape[0],nDims,numSubWins))
     #add channels
