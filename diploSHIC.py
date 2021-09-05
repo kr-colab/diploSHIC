@@ -22,6 +22,7 @@ parser_a.add_argument('testDir', help='path to test set files, can be same as tr
 parser_a.add_argument('outputModel', help='file name for output model, will create two files one with structure one with weights')
 parser_a.add_argument('--epochs', type=int, help='max epochs for training CNN (default = 100)', default=100)
 parser_a.add_argument('--numSubWins', type=int, help='number of subwindows that our chromosome is divided into (default = 11)', default=11)
+parser_a.add_argument('--confusionFile', help='optional file to which confusion matrix plot will be written (default = None)', default=None)
 parser_a.set_defaults(mode='train')
 parser_a._positionals.title = 'required arguments'
 
@@ -115,7 +116,6 @@ if argsDict['mode'] in ['train', 'predict']:
 # Import a bunch of libraries if everything checks out
     import matplotlib
     matplotlib.use('Agg')
-    import pylab as plt
     import numpy as np
     from keras.models import Sequential, Model
     from keras import optimizers
@@ -137,6 +137,7 @@ if argsDict['mode'] == 'train':
     testingDir=argsDict['testDir']
     epochOption = argsDict['epochs']
     outputModel = argsDict['outputModel']
+    confusionFile = argsDict['confusionFile']
     #nCores = 12
     print("loading data now...")
     #training data
@@ -268,6 +269,11 @@ if argsDict['mode'] == 'train':
     print("evaluation on test set:")
     print("diploSHIC loss: %f" % score[0])
     print("diploSHIC accuracy: %f" % score[1])
+    if confusionFile:
+        from misc import plot_confusion_matrix
+        import matplotlib.pyplot as plt
+        plot_confusion_matrix(model, test_gen.standardize(X_test), Y_test, labels=[0,4,2,3,1], display_labels=['Hard', 'Hard-linked', 'Soft', 'Soft-linked', 'Neutral'], cmap=plt.cm.Blues, normalize='true')
+        plt.savefig(confusionFile, bbox_inches='tight')
 
 elif argsDict['mode'] == 'predict':
     import pandas as pd
