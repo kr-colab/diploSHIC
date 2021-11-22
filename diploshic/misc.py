@@ -1,7 +1,9 @@
 import numpy as np
 from scipy.sparse import coo_matrix
+
 """This is all a bunch of stuff copied from sk-learn 0.24.2 but shoving it in
 here for compatibility purposes. Some slight modifications were made."""
+
 
 class ConfusionMatrixDisplay:
     """Confusion Matrix visualization.
@@ -53,13 +55,21 @@ class ConfusionMatrixDisplay:
     ...                               display_labels=clf.classes_)
     >>> disp.plot() # doctest: +SKIP
     """
+
     def __init__(self, confusion_matrix, *, display_labels=None):
         self.confusion_matrix = confusion_matrix
         self.display_labels = display_labels
 
-    def plot(self, *, include_values=True, cmap='viridis',
-             xticks_rotation='horizontal', values_format=None,
-             ax=None, colorbar=True):
+    def plot(
+        self,
+        *,
+        include_values=True,
+        cmap="viridis",
+        xticks_rotation="horizontal",
+        values_format=None,
+        ax=None,
+        colorbar=True
+    ):
         """Plot visualization.
         Parameters
         ----------
@@ -91,7 +101,7 @@ class ConfusionMatrixDisplay:
 
         cm = self.confusion_matrix
         n_classes = cm.shape[0]
-        self.im_ = ax.imshow(cm, interpolation='nearest', cmap=cmap)
+        self.im_ = ax.imshow(cm, interpolation="nearest", cmap=cmap)
         self.text_ = None
         cmap_min, cmap_max = self.im_.cmap(0), self.im_.cmap(256)
 
@@ -106,18 +116,17 @@ class ConfusionMatrixDisplay:
                     color = cmap_max if cm[i, j] < thresh else cmap_min
 
                     if values_format is None:
-                        text_cm = format(cm[i, j], '.2g')
-                        if cm.dtype.kind != 'f':
-                            text_d = format(cm[i, j], 'd')
+                        text_cm = format(cm[i, j], ".2g")
+                        if cm.dtype.kind != "f":
+                            text_d = format(cm[i, j], "d")
                             if len(text_d) < len(text_cm):
                                 text_cm = text_d
                     else:
                         text_cm = format(cm[i, j], values_format)
 
                     self.text_[i, j] = ax.text(
-                        j, i, text_cm,
-                        ha="center", va="center",
-                        color=color)
+                        j, i, text_cm, ha="center", va="center", color=color
+                    )
 
         if self.display_labels is None:
             display_labels = np.arange(n_classes)
@@ -125,12 +134,14 @@ class ConfusionMatrixDisplay:
             display_labels = self.display_labels
         if colorbar:
             fig.colorbar(self.im_, ax=ax)
-        ax.set(xticks=np.arange(n_classes),
-               yticks=np.arange(n_classes),
-               xticklabels=display_labels,
-               yticklabels=display_labels,
-               ylabel="True label",
-               xlabel="Predicted label")
+        ax.set(
+            xticks=np.arange(n_classes),
+            yticks=np.arange(n_classes),
+            xticklabels=display_labels,
+            yticklabels=display_labels,
+            ylabel="True label",
+            xlabel="Predicted label",
+        )
 
         ax.set_ylim((n_classes - 0.5, -0.5))
         plt.setp(ax.get_xticklabels(), rotation=xticks_rotation)
@@ -140,8 +151,9 @@ class ConfusionMatrixDisplay:
         return self
 
 
-def confusion_matrix(y_true, y_pred, *, labels=None, sample_weight=None,
-                     normalize=None):
+def confusion_matrix(
+    y_true, y_pred, *, labels=None, sample_weight=None, normalize=None
+):
     """Compute confusion matrix to evaluate the accuracy of a classification.
     By definition a confusion matrix :math:`C` is such that :math:`C_{i, j}`
     is equal to the number of observations known to be in group :math:`i` and
@@ -223,15 +235,20 @@ def confusion_matrix(y_true, y_pred, *, labels=None, sample_weight=None,
     else:
         sample_weight = np.asarray(sample_weight)
 
-    if normalize not in ['true', 'pred', 'all', None]:
-        raise ValueError("normalize must be one of {'true', 'pred', "
-                         "'all', None}")
+    if normalize not in ["true", "pred", "all", None]:
+        raise ValueError(
+            "normalize must be one of {'true', 'pred', " "'all', None}"
+        )
 
     n_labels = labels.size
     label_to_ind = {y: x for x, y in enumerate(labels)}
     # convert yt, yp into index
-    y_pred = np.array([label_to_ind.get(np.argmax(x), n_labels + 1) for x in y_pred])
-    y_true = np.array([label_to_ind.get(np.argmax(x), n_labels + 1) for x in y_true])
+    y_pred = np.array(
+        [label_to_ind.get(np.argmax(x), n_labels + 1) for x in y_pred]
+    )
+    y_true = np.array(
+        [label_to_ind.get(np.argmax(x), n_labels + 1) for x in y_true]
+    )
 
     # intersect y_pred, y_true with labels, eliminate items not in labels
     ind = np.logical_and(y_pred < n_labels, y_true < n_labels)
@@ -241,32 +258,45 @@ def confusion_matrix(y_true, y_pred, *, labels=None, sample_weight=None,
     sample_weight = sample_weight[ind]
 
     # Choose the accumulator dtype to always have high precision
-    if sample_weight.dtype.kind in {'i', 'u', 'b'}:
+    if sample_weight.dtype.kind in {"i", "u", "b"}:
         dtype = np.int64
     else:
         dtype = np.float64
 
-    cm = coo_matrix((sample_weight, (y_true, y_pred)),
-                    shape=(n_labels, n_labels), dtype=dtype,
-                    ).toarray()
+    cm = coo_matrix(
+        (sample_weight, (y_true, y_pred)),
+        shape=(n_labels, n_labels),
+        dtype=dtype,
+    ).toarray()
 
-    with np.errstate(all='ignore'):
-        if normalize == 'true':
+    with np.errstate(all="ignore"):
+        if normalize == "true":
             cm = cm / cm.sum(axis=1, keepdims=True)
-        elif normalize == 'pred':
+        elif normalize == "pred":
             cm = cm / cm.sum(axis=0, keepdims=True)
-        elif normalize == 'all':
+        elif normalize == "all":
             cm = cm / cm.sum()
         cm = np.nan_to_num(cm)
 
     return cm
 
-def plot_confusion_matrix(estimator, X, y_true, *, labels=None,
-                          sample_weight=None, normalize=None,
-                          display_labels=None, include_values=True,
-                          xticks_rotation='horizontal',
-                          values_format=None,
-                          cmap='viridis', ax=None, colorbar=True):
+
+def plot_confusion_matrix(
+    estimator,
+    X,
+    y_true,
+    *,
+    labels=None,
+    sample_weight=None,
+    normalize=None,
+    display_labels=None,
+    include_values=True,
+    xticks_rotation="horizontal",
+    values_format=None,
+    cmap="viridis",
+    ax=None,
+    colorbar=True
+):
     """Plot Confusion Matrix.
     Read more in the :ref:`User Guide <confusion_matrix>`.
     Parameters
@@ -332,10 +362,21 @@ def plot_confusion_matrix(estimator, X, y_true, *, labels=None,
     """
 
     y_pred = estimator.predict(X)
-    cm = confusion_matrix(y_true, y_pred, sample_weight=sample_weight,
-                          labels=labels, normalize=normalize)
-    disp = ConfusionMatrixDisplay(confusion_matrix=cm,
-                                  display_labels=display_labels)
-    return disp.plot(include_values=include_values,
-                     cmap=cmap, ax=ax, xticks_rotation=xticks_rotation,
-                     values_format=values_format, colorbar=colorbar)
+    cm = confusion_matrix(
+        y_true,
+        y_pred,
+        sample_weight=sample_weight,
+        labels=labels,
+        normalize=normalize,
+    )
+    disp = ConfusionMatrixDisplay(
+        confusion_matrix=cm, display_labels=display_labels
+    )
+    return disp.plot(
+        include_values=include_values,
+        cmap=cmap,
+        ax=ax,
+        xticks_rotation=xticks_rotation,
+        values_format=values_format,
+        colorbar=colorbar,
+    )
