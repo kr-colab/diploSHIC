@@ -1,5 +1,5 @@
 notifications:
-  email: false
+  email: true
 
 matrix:
   include:
