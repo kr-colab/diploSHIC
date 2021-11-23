@@ -22,33 +22,26 @@ such as `conda` or `pip`. The complete list of dependencies looks like this:
 
 ## Install on linux
 I'm going to focus on the steps involved to install on a linux machine using Anaconda as our python source / main
-package manager. First download and install Anaconda
+package manager. Assuming you have conda installed, create a new conda env
 
 ```
-$ wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh
-$ bash Anaconda3-5.0.1-Linux-x86_64.sh
+$ conda create -n diploshic python=3.9 --yes
 ```
-That will give us the basics (numpy, scipy, scikit-learn, etc). Next lets install scikit-allel using `conda`
-```
-$ conda install -c conda-forge scikit-allel
-```
-That's easy. Installing tensorflow and keras can be slightly more touchy. You will need to determine if 
-you want to use a CPU-only implementation (probably) or a GPU implementation of tensorflow. See
-https://www.tensorflow.org/install/install_linux for install instructions. I'm going to install the
-CPU version for simplicity. tensorflow and keras are the libraries which handle the deep learning
-portion of things so it is important to make sure the versions of these libraries play well together 
-```
-$ pip install tensorflow 
-$ pip install keras
-```
+
 Note that because I'm using the Anaconda version of python, pip will only install this in the anaconda directory
-which is a good thing. Okay that should be the basics of dependencies. Now we are ready to install `diploS/HIC` itself
+which is a good thing. Now we are ready to install `diploS/HIC` itself
+
 ```
 $ git clone https://github.com/kern-lab/diploSHIC.git
 $ cd diploSHIC 
-$ python setup.py install
+$ pip install .
 ```
-Assuming all the dependencies were installed this should be all set
+
+This should automatically install all the dependencies including tensorflow.
+You will need to determine if 
+you want to use a CPU-only implementation (probably) or a GPU implementation of tensorflow. See
+https://www.tensorflow.org/install/install_linux for install instructions. 
+
 
 ## Usage
 The main program that you will interface with is `diploSHIC.py`. This script has four run modes that allow the user to 
