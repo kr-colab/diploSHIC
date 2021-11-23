@@ -44,19 +44,21 @@ https://www.tensorflow.org/install/install_linux for install instructions.
 
 
 ## Usage
-The main program that you will interface with is `diploSHIC.py`. This script has four run modes that allow the user to 
+The main program that you will interface with is `diploSHIC`. This script is installed by default
+in the conda environment `bin` directory.
+ This script has four run modes that allow the user to 
 perform each of the main steps in the supervised machine learning process. We will briefly lay out the modes of use
 and then will provide a complete example of how to use the program for fun and profit.
 
-`diploSHIC.py` uses the `argparse` module in python to try to give the user a complete, command line based help menu. 
+`diploSHIC` uses the `argparse` module in python to try to give the user a complete, command line based help menu. 
 We can see the top level of this help by typing
 ```
-$ python diploSHIC.py -h
-usage: diploSHIC.py [-h] {train,predict,fvecSim,fvecVcf} ...
+$ diploSHIC -h
+usage: diploSHIC [-h] {train,predict,fvecSim,fvecVcf} ...
 
 calculate feature vectors, train, or predict with diploSHIC
 
-possible modes (enter 'python diploSHIC.py modeName -h' for modeName's help message:
+possible modes (enter 'diploSHIC modeName -h' for modeName's help message:
   {fvecSim,makeTrainingSets,train,fvecVcf,predict}
                         sub-command help
     fvecSim             Generate feature vectors from simulated data
@@ -77,15 +79,15 @@ https://github.com/kern-lab/discoal).
 
 ### feature vector generation modes
 The first task in our pipeline is generating feature vectors from simulation data (or empirical data) to
-use with the CNN that we will train and then use for prediction. The `diploSHIC.py` script eases this 
+use with the CNN that we will train and then use for prediction. The `diploSHIC` script eases this 
 process with two run modes
 
 #### fvecSim mode
-The fvecSim run mode is used for turning ms-style output into feature vectors compatible with `diploSHIC.py`. The
+The fvecSim run mode is used for turning ms-style output into feature vectors compatible with `diploSHIC`. The
 help message from this mode looks like this
 ```
-$ python diploSHIC.py fvecSim -h
-usage: diploSHIC.py fvecSim [-h] [--totalPhysLen TOTALPHYSLEN]
+$ diploSHIC fvecSim -h
+usage: diploSHIC fvecSim [-h] [--totalPhysLen TOTALPHYSLEN]
                             [--numSubWins NUMSUBWINS]
                             [--maskFileName MASKFILENAME]
                             [--chrArmsForMasking CHRARMSFORMASKING]
@@ -145,8 +147,8 @@ for a fleshed out example of how to use these features.
 The fvecVcf mode is used for calculating feature vectors from data that is stored as a VCF file. 
 The help message from this mode is as follows
 ```
-$ python diploSHIC.py fvecVcf -h
-usage: diploSHIC.py fvecVcf [-h] [--targetPop TARGETPOP]
+$ diploSHIC fvecVcf -h
+usage: diploSHIC fvecVcf [-h] [--targetPop TARGETPOP]
                             [--sampleToPopFileName SAMPLETOPOPFILENAME]
                             [--winSize WINSIZE] [--numSubWins NUMSUBWINS]
                             [--maskFileName MASKFILENAME]
@@ -212,8 +214,8 @@ Once we have feature vector files ready to go we can train and test our CNN and 
 Before entering train mode we need to consolidate our training set into 5 files, one for each class. This is done using the
 makeTrainingSets mode whose help message is as follows:
 ```
-$ python diploSHIC.py makeTrainingSets -h
-usage: diploSHIC.py makeTrainingSets [-h]
+$ diploSHIC makeTrainingSets -h
+usage: diploSHIC makeTrainingSets [-h]
                                      neutTrainingFileName
                                      softTrainingFilePrefix
                                      hardTrainingFilePrefix
@@ -244,10 +246,10 @@ optional arguments:
   -h, --help            show this help message and exit
 ```
 #### train mode
-Here is the help message for the train mode of `diploSHIC.py`
+Here is the help message for the train mode of `diploSHIC`
 ```
-$ python diploSHIC.py train -h
-usage: diploSHIC.py train [-h] [--epochs EPOCHS] [--numSubWins NUMSUBWINS]
+$ diploSHIC train -h
+usage: diploSHIC train [-h] [--epochs EPOCHS] [--numSubWins NUMSUBWINS]
                           trainDir testDir outputModel
 
 required arguments:
@@ -266,7 +268,7 @@ optional arguments:
 As you will see in a moment train mode is used for training the deep learning classifier. Its required
 arguments are trainDir (the directory where the training feature vectors
 are kept), testDir (the directory where the testing feature vectors are kept), and outputModel the file name for the trained
-network. One note -- `diploSHIC.py` expects five files named `hard.fvec`, `soft.fvec`, `neut.fvec`, `linkedSoft.fvec`, and 
+network. One note -- `diploSHIC` expects five files named `hard.fvec`, `soft.fvec`, `neut.fvec`, `linkedSoft.fvec`, and 
 `linkedHard.fvec` in the training and testing directories. The training and testing directory can be the same directory in 
 which case 20% of the training examples are held out for use in testing and validation.
 
@@ -274,11 +276,11 @@ train mode has two options, the number of subwindows used for the feature vector
 network.
 
 ### predict mode
-Once a classifier has been trained, one uses the predict mode of `diploSHIC.py` to classify empirical data. Here is the help
+Once a classifier has been trained, one uses the predict mode of `diploSHIC` to classify empirical data. Here is the help
 statement
 ```
-$ python diploSHIC.py predict -h
-usage: diploSHIC.py predict [-h] [--numSubWins NUMSUBWINS]
+$ diploSHIC predict -h
+usage: diploSHIC predict [-h] [--numSubWins NUMSUBWINS]
                             modelStructure modelWeights predictFile
                             predictFileOutput
 
@@ -304,11 +306,11 @@ genomic data). Let's quickly give that code a spin. The directories `testing/` a
 formatted diploid feature vectors that are ready to be fed into diploSHIC. First we will train the diploSHIC CNN, but we will
 restrict the number of training epochs to 10 to keep things relatively brief (this runs in less than 5 minutes on our server). 
 ```
-$ python diploSHIC.py train training/ testing/ fooModel --epochs 10
+$ diploSHIC train training/ testing/ fooModel --epochs 10
 ```
 as it runs a bunch of information monitoring the training of the network will apear. We are tracking the loss and accuracy in the
 validation set. When optimization is complete our trained network will be contained in two files, `fooModel.json` and 
-`fooModel.weights.hdf5`. The last bit of output from `diploSHIC.py` gives us information about the loss and accuracy on
+`fooModel.weights.hdf5`. The last bit of output from `diploSHIC` gives us information about the loss and accuracy on
 the held out test data. From the above run my looks like this:
 ```
 evaluation on test set:
@@ -319,7 +321,7 @@ Not bad. In practice I would set the `--epochs` value much higher than 10- the d
 Now that we have a trained model we can make predictions on some empirical data. In the repo there is a file called `testEmpirical.fvec`
 that we will use as input
 ```
-$ python diploSHIC.py predict fooModel.json fooModel.weights.hdf5 testEmpirical.fvec testEmpirical.preds
+$ diploSHIC predict fooModel.json fooModel.weights.hdf5 testEmpirical.fvec testEmpirical.preds
 ```
 the output predictions will be saved in `testEmpirical.preds` and should be straightforward to interpret.
 
