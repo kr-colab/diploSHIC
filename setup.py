@@ -1,3 +1,4 @@
+from setuptools import setup
 from numpy.distutils.core import Extension, setup
 
 with open("README.md", "r") as fh:
@@ -8,14 +9,14 @@ shic_stats = Extension("diploshic.shicstats",
                                 "diploshic/utils.c"],
                       )
 setup(name='diploSHIC',
-      version='0.33333',
-      description='diploS/HIC',
+      version='0.333333',
+      description='diploSHIC',
       long_description=long_description,
       long_description_content_type="text/markdown",
       url='https://github.com/kr-colab/diploSHIC',
       author='Andrew Kern',
       author_email='adkern@uoregon.edu',
-      license='MIT',      
+      license='MIT',
       packages=['diploshic'],
       install_requires=['numpy',
                         'scipy',

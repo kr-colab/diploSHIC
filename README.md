@@ -46,19 +46,20 @@ https://www.tensorflow.org/install/install_linux for install instructions.
 ## Usage
 The main program that you will interface with is `diploSHIC`. This script is installed by default
 in the conda environment `bin` directory.
- This script has four run modes that allow the user to 
+This script has four run modes that allow the user to 
 perform each of the main steps in the supervised machine learning process. We will briefly lay out the modes of use
 and then will provide a complete example of how to use the program for fun and profit.
 
 `diploSHIC` uses the `argparse` module in python to try to give the user a complete, command line based help menu. 
 We can see the top level of this help by typing
+
 ```
 $ diploSHIC -h
 usage: diploSHIC [-h] {train,predict,fvecSim,fvecVcf} ...
 
 calculate feature vectors, train, or predict with diploSHIC
 
-possible modes (enter 'diploSHIC modeName -h' for modeName's help message:
+possible modes (enter \'diploSHIC modeName -h\' for modeName\'s help message:
   {fvecSim,makeTrainingSets,train,fvecVcf,predict}
                         sub-command help
     fvecSim             Generate feature vectors from simulated data
@@ -71,6 +72,8 @@ possible modes (enter 'diploSHIC modeName -h' for modeName's help message:
 optional arguments:
   -h, --help            show this help message and exit
 ```
+
+
 ### before running diploSHIC: simulating training/testing data
 All flavors of S/HIC require simulated data for training (and ideally, testing). Users can select whatever simulator 
 they prefer and parameterize them however they wish. We have included an example script in this respository 
