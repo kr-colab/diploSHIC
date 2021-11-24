@@ -1,11 +1,41 @@
-# File setup.py
-def configuration(parent_package='',top_path=None):
-    from numpy.distutils.misc_util import Configuration
-    config = Configuration('',parent_package,top_path)
+from setuptools import setup
+from numpy.distutils.core import Extension, setup
 
-    config.add_extension('shicstats',
-                         sources = ['shicstats.pyf','utils.c'])
-    return config
-if __name__ == "__main__":
-    from numpy.distutils.core import setup
-    setup(**configuration(top_path='').todict())
+with open("README.md", "r") as fh:
+    long_description = fh.read()
+
+shic_stats = Extension("diploshic.shicstats",
+                       sources=["diploshic/shicstats.pyf",
+                                "diploshic/utils.c"],
+                      )
+setup(name='diploSHIC',
+      version='0.333333',
+      description='diploSHIC',
+      long_description=long_description,
+      long_description_content_type="text/markdown",
+      url='https://github.com/kr-colab/diploSHIC',
+      author='Andrew Kern',
+      author_email='adkern@uoregon.edu',
+      license='MIT',
+      packages=['diploshic'],
+      install_requires=['numpy',
+                        'scipy',
+                        'matplotlib',
+                        'pandas',
+                        'scikit-allel',
+                        'scikit-learn',
+                        'tensorflow',
+                        'keras'],
+      scripts=['diploshic/diploSHIC',
+              'diploshic/makeFeatureVecsForChrArmFromVcfDiploid.py',
+              'diploshic/makeFeatureVecsForChrArmFromVcf_ogSHIC.py',
+              'diploshic/makeFeatureVecsForSingleMsDiploid.py',
+              'diploshic/makeFeatureVecsForSingleMs_ogSHIC.py',
+              'diploshic/makeTrainingSets.py'],
+      zip_safe=False,
+      extras_require={
+          'dev': [],
+      },
+      setup_requires=[],
+      ext_modules=[shic_stats]
+)

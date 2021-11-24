@@ -1,7 +1,14 @@
 import sys, os, random
 
-neutTrainingFileName, softTrainingFilePrefix, hardTrainingFilePrefix, sweepTrainingWindows, linkedTrainingWindows, outDir = sys.argv[1:]
-#sweepTrainingWindows and linkedTrainingWindows are comma-separated lists
+(
+    neutTrainingFileName,
+    softTrainingFilePrefix,
+    hardTrainingFilePrefix,
+    sweepTrainingWindows,
+    linkedTrainingWindows,
+    outDir,
+) = sys.argv[1:]
+# sweepTrainingWindows and linkedTrainingWindows are comma-separated lists
 
 sweepFilePaths, linkedFilePaths = {}, {}
 for trainingFilePrefix in [softTrainingFilePrefix, hardTrainingFilePrefix]:
@@ -16,20 +23,28 @@ for trainingFilePrefix in [softTrainingFilePrefix, hardTrainingFilePrefix]:
         if fileName.startswith(trainingFilePrefixDirless):
             winNum = int(fileName.split("_")[1].split(".")[0])
             if winNum in linkedWins:
-                linkedFilePaths[trainingFilePrefix].append(trainingSetDir + "/" + fileName)
+                linkedFilePaths[trainingFilePrefix].append(
+                    trainingSetDir + "/" + fileName
+                )
             elif winNum in sweepWins:
-                sweepFilePaths[trainingFilePrefix].append(trainingSetDir + "/" + fileName)
+                sweepFilePaths[trainingFilePrefix].append(
+                    trainingSetDir + "/" + fileName
+                )
+
 
 def getExamplesFromFVFile(simFileName):
     try:
-        simFile = open(simFileName,'rt')
-        lines = [line.strip() for line in simFile.readlines() if not "nan" in line]
+        simFile = open(simFileName, "rt")
+        lines = [
+            line.strip() for line in simFile.readlines() if not "nan" in line
+        ]
         header = lines[0]
         examples = lines[1:]
         simFile.close()
         return header, examples
     except Exception:
         return "", []
+
 
 def getExamplesFromFVFileLs(simFileLs):
     examples = []
@@ -41,6 +56,7 @@ def getExamplesFromFVFileLs(simFileLs):
         examples += currExamples
     return keptHeader, examples
 
+
 def getMinButNonZeroExamples(lsLs):
     counts = []
     for ls in lsLs:
@@ -50,24 +66,57 @@ def getMinButNonZeroExamples(lsLs):
         raise Exception
     return min(counts)
 
+
 header, neutExamples = getExamplesFromFVFile(neutTrainingFileName)
-linkedSoftHeader, linkedSoftExamples = getExamplesFromFVFileLs(linkedFilePaths[softTrainingFilePrefix])
-softHeader, softExamples = getExamplesFromFVFileLs(sweepFilePaths[softTrainingFilePrefix])
-linkedHardHeader, linkedHardExamples = getExamplesFromFVFileLs(linkedFilePaths[hardTrainingFilePrefix])
-hardHeader, hardExamples = getExamplesFromFVFileLs(sweepFilePaths[hardTrainingFilePrefix])
-trainingSetLs = [linkedSoftExamples, softExamples, linkedHardExamples, hardExamples,neutExamples]
+linkedSoftHeader, linkedSoftExamples = getExamplesFromFVFileLs(
+    linkedFilePaths[softTrainingFilePrefix]
+)
+softHeader, softExamples = getExamplesFromFVFileLs(
+    sweepFilePaths[softTrainingFilePrefix]
+)
+linkedHardHeader, linkedHardExamples = getExamplesFromFVFileLs(
+    linkedFilePaths[hardTrainingFilePrefix]
+)
+hardHeader, hardExamples = getExamplesFromFVFileLs(
+    sweepFilePaths[hardTrainingFilePrefix]
+)
+trainingSetLs = [
+    linkedSoftExamples,
+    softExamples,
+    linkedHardExamples,
+    hardExamples,
+    neutExamples,
+]
 numExamplesToKeep = getMinButNonZeroExamples(trainingSetLs)
 for i in range(len(trainingSetLs)):
     random.shuffle(trainingSetLs[i])
     trainingSetLs[i] = trainingSetLs[i][:numExamplesToKeep]
-linkedSoftExamples, softExamples, linkedHardExamples, hardExamples, neutExamples = trainingSetLs
+(
+    linkedSoftExamples,
+    softExamples,
+    linkedHardExamples,
+    hardExamples,
+    neutExamples,
+) = trainingSetLs
 
-outFileNames = ["neut.fvec", "linkedSoft.fvec", "soft.fvec", "linkedHard.fvec", "hard.fvec"]
-outExamples = [neutExamples, linkedSoftExamples, softExamples, linkedHardExamples, hardExamples]
+outFileNames = [
+    "neut.fvec",
+    "linkedSoft.fvec",
+    "soft.fvec",
+    "linkedHard.fvec",
+    "hard.fvec",
+]
+outExamples = [
+    neutExamples,
+    linkedSoftExamples,
+    softExamples,
+    linkedHardExamples,
+    hardExamples,
+]
 for i in range(len(outFileNames)):
     if outExamples[i]:
-        outFile = open(outDir +"/"+ outFileNames[i], "w")
-        outFile.write(hardHeader+"\n")
+        outFile = open(outDir + "/" + outFileNames[i], "w")
+        outFile.write(hardHeader + "\n")
         for example in outExamples[i]:
-            outFile.write("%s\n" %(example))
+            outFile.write("%s\n" % (example))
         outFile.close()

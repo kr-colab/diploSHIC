@@ -1,0 +1,27 @@
+package:
+ name: diploshic
+ version: "0.33333"
+ 
+source:
+ git_url: https://github.com/kr-colab/diploshic
+ git_rev: 
+ 
+build:
+ number: 0
+ 
+Requirements:
+ Build:
+   - numpy
+ run:
+   - numpy
+   - scipy
+   - matplotlib
+   - pandas
+   - scikit-allel
+   - scikit-learn
+   - tensorflow
+   - keras
+ 
+about:
+ home: https://github.com/kr-colab/diploshic
+ license: MIT

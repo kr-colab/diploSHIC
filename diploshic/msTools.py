@@ -17,7 +17,7 @@ def fillInSnpSlotsWithOverflowers(newPositions, totalPhysLen, overflowers):
         posH[pos] = 1
     for i in range(len(overflowers)):
         del newPositions[-1]
-    for pos in reversed(range(1, totalPhysLen+1)):
+    for pos in reversed(range(1, totalPhysLen + 1)):
         if pos not in posH:
             bisect.insort_left(newPositions, pos)
             overflowers.pop()
@@ -31,14 +31,16 @@ def msPositionsToIntegerPositions(positions, totalPhysLen):
     prevIntPos = -1
     newPositions = []
     for position in positions:
-        assert position >= 0 and position < 1., "Mutations positions must all be in [0, 1)"
+        assert (
+            position >= 0 and position < 1.0
+        ), "Mutations positions must all be in [0, 1)"
         assert position >= prevPos
         origPos = position
         if position == prevPos:
             position += 0.000001
         prevPos = origPos
 
-        intPos = int(totalPhysLen*position)
+        intPos = int(totalPhysLen * position)
         if intPos == 0:
             intPos = 1
         if intPos <= prevIntPos:
@@ -49,13 +51,17 @@ def msPositionsToIntegerPositions(positions, totalPhysLen):
     if overflowers:
         fillInSnpSlotsWithOverflowers(newPositions, totalPhysLen, overflowers)
     assert len(newPositions) == len(positions)
-    assert all(newPositions[i] <= newPositions[i+1]
-               for i in range(len(newPositions)-1))
+    assert all(
+        newPositions[i] <= newPositions[i + 1]
+        for i in range(len(newPositions) - 1)
+    )
     assert newPositions[-1] <= totalPhysLen
     return newPositions
 
 
-def msRepToHaplotypeArrayIn(samples, positions, totalPhysLen, transposeHaps, discretizePositions=True):
+def msRepToHaplotypeArrayIn(
+    samples, positions, totalPhysLen, transposeHaps, discretizePositions=True
+):
     for i in range(len(samples)):
         assert len(samples[i]) == len(positions)
     if discretizePositions:
@@ -72,16 +78,18 @@ def msRepToHaplotypeArrayIn(samples, positions, totalPhysLen, transposeHaps, dis
     return hapArrayIn, positions
 
 
-def msOutToHaplotypeArrayIn(msOutputFileName, totalPhysLen, discretizePositions=True):
+def msOutToHaplotypeArrayIn(
+    msOutputFileName, totalPhysLen, discretizePositions=True
+):
     if msOutputFileName == "stdin":
         isFile = False
         msStream = sys.stdin
     else:
         isFile = True
         if msOutputFileName.endswith(".gz"):
-            msStream = gzip.open(msOutputFileName, 'rt')
+            msStream = gzip.open(msOutputFileName, "rt")
         else:
-            msStream = open(msOutputFileName, 'rt')
+            msStream = open(msOutputFileName, "rt")
 
     header = msStream.readline()
     program, numSamples, numSims = header.strip().split()[:3]
@@ -96,7 +104,9 @@ def msOutToHaplotypeArrayIn(msOutputFileName, totalPhysLen, discretizePositions=
     while line:
         if line.strip() != "//":
             sys.exit(
-                "Malformed ms-style output file: read '%s' instead of '//'. \n" % (line.strip()))  # NOQA
+                "Malformed ms-style output file: read '%s' instead of '//'. \n"
+                % (line.strip())
+            )  # NOQA
         segsitesBlah, segsites = msStream.readline().strip().split()
         segsites = int(segsites)
         if segsitesBlah != "segsites:":
@@ -116,14 +126,26 @@ def msOutToHaplotypeArrayIn(msOutputFileName, totalPhysLen, discretizePositions=
             for i in range(numSamples):
                 sampleLine = msStream.readline().strip()
                 if len(sampleLine) != segsites:
-                    sys.exit("Malformed ms-style output file %s segsites but %s columns in line: %s; line %s of %s samples \n" %  # NOQA
-                             (segsites, len(sampleLine), sampleLine, i, numSamples)) # NOQA
+                    sys.exit(
+                        "Malformed ms-style output file %s segsites but %s columns in line: %s; line %s of %s samples \n"
+                        % (
+                            segsites,
+                            len(sampleLine),
+                            sampleLine,
+                            i,
+                            numSamples,
+                        )  # NOQA
+                    )  # NOQA
                 samples.append(sampleLine)
             if len(samples) != numSamples:
                 raise Exception
             hapArrayIn, positions = msRepToHaplotypeArrayIn(
-                samples, positions, totalPhysLen, True,
-                discretizePositions=discretizePositions)
+                samples,
+                positions,
+                totalPhysLen,
+                True,
+                discretizePositions=discretizePositions,
+            )
         hapArraysIn.append(hapArrayIn)
         positionArrays.append(positions)
         line = msStream.readline()
@@ -132,8 +154,10 @@ def msOutToHaplotypeArrayIn(msOutputFileName, totalPhysLen, discretizePositions=
             line = msStream.readline()
         # sys.stderr.write("finished rep %d\n" %(len(hapArraysIn)))
     if len(hapArraysIn) != numSims:
-        sys.exit("Malformed ms-style output file: %s of %s sims processed. \n" % # NOQA
-                 (len(hapArraysIn), numSims))
+        sys.exit(
+            "Malformed ms-style output file: %s of %s sims processed. \n"
+            % (len(hapArraysIn), numSims)  # NOQA
+        )
 
     if isFile:
         msStream.close()
@@ -147,7 +171,7 @@ def openMsOutFileForSequentialReading(msOutputFileName):
     else:
         isFile = True
         if msOutputFileName.endswith(".gz"):
-            msStream = gzip.open(msOutputFileName, 'rt')
+            msStream = gzip.open(msOutputFileName, "rt")
         else:
             msStream = open(msOutputFileName)
 
@@ -164,7 +188,13 @@ def closeMsOutFile(fileInfoTuple):
         msStream.close()
 
 
-def readNextMsRepToHaplotypeArrayIn(fileInfoTuple, numSamples, totalPhysLen, transposeHaps=True, discretizePositions=True):
+def readNextMsRepToHaplotypeArrayIn(
+    fileInfoTuple,
+    numSamples,
+    totalPhysLen,
+    transposeHaps=True,
+    discretizePositions=True,
+):
     msStream, isFile = fileInfoTuple
 
     # advance to next simulation
@@ -191,16 +221,37 @@ def readNextMsRepToHaplotypeArrayIn(fileInfoTuple, numSamples, totalPhysLen, tra
         for i in range(numSamples):
             sampleLine = msStream.readline().strip()
             if len(sampleLine) != segsites:
-                sys.exit("Malformed ms-style output file %s segsites but %s columns in line: %s; line %s of %s samples \n" %  # NOQA
-                         (segsites, len(sampleLine), sampleLine, i, numSamples)) # NOQA
+                sys.exit(
+                    "Malformed ms-style output file %s segsites but %s columns in line: %s; line %s of %s samples \n"
+                    % (
+                        segsites,
+                        len(sampleLine),
+                        sampleLine,
+                        i,
+                        numSamples,
+                    )  # NOQA
+                )  # NOQA
             samples.append(sampleLine)
         if len(samples) != numSamples:
             raise Exception
         hapArrayIn, positions = msRepToHaplotypeArrayIn(
-            samples, positions, totalPhysLen, transposeHaps,
-            discretizePositions=discretizePositions)
+            samples,
+            positions,
+            totalPhysLen,
+            transposeHaps,
+            discretizePositions=discretizePositions,
+        )
 
     return hapArrayIn, positions
 
-def readNextMsRepToGameteStrs(fileInfoTuple, numSamples, totalPhysLen, discretizePositions=True):
-    return readNextMsRepToHaplotypeArrayIn(fileInfoTuple, numSamples, totalPhysLen, transposeHaps=False, discretizePositions=discretizePositions)
+
+def readNextMsRepToGameteStrs(
+    fileInfoTuple, numSamples, totalPhysLen, discretizePositions=True
+):
+    return readNextMsRepToHaplotypeArrayIn(
+        fileInfoTuple,
+        numSamples,
+        totalPhysLen,
+        transposeHaps=False,
+        discretizePositions=discretizePositions,
+    )
