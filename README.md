@@ -29,7 +29,14 @@ $ conda create -n diploshic python=3.9 --yes
 ```
 
 Note that because I'm using the Anaconda version of python, pip will only install this in the anaconda directory
-which is a good thing. Now we are ready to install `diploS/HIC` itself
+which is a good thing. Now we are ready to install `diploS/HIC` itself. We recommend using the binarys that
+we have packaged using pip. Simple type
+
+```
+pip install diploshic
+```
+
+or if you prefer you can clone and build the repo yourself
 
 ```
 $ git clone https://github.com/kern-lab/diploSHIC.git
