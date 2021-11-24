@@ -21,8 +21,8 @@ replicates = 2
 seed_array = np.random.random_integers(1,2**31,replicates)
 
 # change to the correct locations of discoal and diploSHIC
-discoal_exec = "discoal/discoal"
-diploSHIC_exec = "diploSHIC/diploSHIC.py"
+discoal_exec = "./discoal"
+diploSHIC_exec = "diploSHIC"
 
 #some parameters that should probably be moved to a .json file
 trainSampleNumber = 10 #the number of simulation replicates we want to generate for each file in our training set
@@ -100,7 +100,7 @@ rule calc_sim_fvs:
     output:
         "{tDir}/discoal.{mod}.{x}.{i}.out.fvec"
     run:
-        cmd = f"python {diploSHIC_exec} fvecSim haploid {input} {output} --totalPhysLen={numSites} --maskFileName none --chrArmsForMasking none"
+        cmd = f"{diploSHIC_exec} fvecSim haploid {input} {output} --totalPhysLen={numSites} --maskFileName none --chrArmsForMasking none"
         shell(cmd)
 
 rule concat_fvecs:
@@ -127,7 +127,7 @@ rule make_training_sets:
     output:
         expand("trainingSets/{cl}.fvec", cl = ["hard", "linkedHard", "soft", "linkedSoft", "neut"])
     run:
-        cmd = f"python {diploSHIC_exec} makeTrainingSets train/neut_0.fvec train/soft train/hard 5 0,1,2,3,4,6,7,8,9,10 trainingSets/"
+        cmd = f"{diploSHIC_exec} makeTrainingSets train/neut_0.fvec train/soft train/hard 5 0,1,2,3,4,6,7,8,9,10 trainingSets/"
         shell(cmd)
 
 rule train_classifier:
@@ -137,7 +137,7 @@ rule train_classifier:
         "trained_model.json",
         "trained_model.weights.hdf5"
     run:
-        cmd = f"python {diploSHIC_exec} train trainingSets/ trainingSets/ trained_model --epochs=10"
+        cmd = f"{diploSHIC_exec} train trainingSets/ trainingSets/ trained_model --epochs=10"
         shell(cmd)
 
 rule clean:
