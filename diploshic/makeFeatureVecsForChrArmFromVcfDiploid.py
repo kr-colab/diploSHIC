@@ -269,7 +269,7 @@ for subWinStart in range(1, lastSubWinStart + 1, subWinSize):
         outVec = []
         for statName in statNames:
             outVec += normalizeFeatureVec(statVals[statName][-numSubWins:])
-        midSubWinEnd = subWinEnd - subWinSize * (numSubWins / 2)
+        midSubWinEnd = int(subWinEnd - subWinSize * (numSubWins // 2))
         midSubWinStart = midSubWinEnd - subWinSize + 1
         outFile.write(
             "%s\t%d\t%d\t%d-%d\t"
