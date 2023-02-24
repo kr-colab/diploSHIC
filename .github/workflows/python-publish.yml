@@ -13,20 +13,49 @@ on:
     types: [published]
 
 jobs:
-  deploy:
 
+  manylinux:
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v2
-    - name: Set up Python
-      uses: actions/setup-python@v2
-      with:
-        python-version: '3.x'
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+            submodules: true
+      - name: Set up Python 3.8
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.8
+      - name: Build sdist
+        shell: bash
+        run: |
+          pip install --upgrade pip build
+          python -m build --sdist
+      - name: Upload sdist
+        uses: actions/upload-artifact@v2
+        with:
+          name: sdist
+          path: dist
+      - name: Build wheels in docker
+        shell: bash
+        run: |
+          docker run --rm -v `pwd`:/project -w /project quay.io/pypa/manylinux2010_x86_64 bash .github/workflows/docker/buildwheel.sh
+      - name: Upload Wheels
+        uses: actions/upload-artifact@v2
+        with:
+          name: linux-wheels
+          path: dist/wheelhouse
+          
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install build
+    - name: Download all
+        uses: actions/download-artifact@v2
+    - name: Move to dist
+      run: |
+        mkdir dist
+        cp */*.{whl,gz} dist/.
+      
     - name: Build package
       run: python -m build
     - name: Publish package
