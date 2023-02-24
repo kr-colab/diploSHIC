@@ -46,7 +46,6 @@ jobs:
           
   PyPI_Upload:
     runs-on: ubuntu-latest
-    needs: ['OSX-test', 'manylinux-test']
     steps:
       - name: Download all
         uses: actions/download-artifact@v2
