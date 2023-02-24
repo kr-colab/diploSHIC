@@ -13,7 +13,6 @@ on:
     types: [published]
 
 jobs:
-
   manylinux:
     runs-on: ubuntu-latest
     steps:
@@ -44,7 +43,8 @@ jobs:
         with:
           name: linux-wheels
           path: dist/wheelhouse
-          
+  PyPI_Upload:
+    runs-on: ubuntu-latest
       - name: Download all
         uses: actions/download-artifact@v2
       - name: Move to dist
