@@ -123,6 +123,10 @@ if segmentStart != None:
         for i in range(len(positions))
         if segmentStart <= positions[i] <= segmentEnd
     ]
+    if len(snpIndicesToKeep) == 0:
+        sys.exit(
+            "Error: no SNPs in the given segment of the chr arm; exiting\n"
+        )
     positions = [positions[i] for i in snpIndicesToKeep]
     refAlleles = [refAlleles[i] for i in snpIndicesToKeep]
     altAlleles = [altAlleles[i] for i in snpIndicesToKeep]

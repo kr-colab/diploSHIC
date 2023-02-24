@@ -141,6 +141,10 @@ if segmentStart != None:
         for i in range(len(positions))
         if segmentStart <= positions[i] <= segmentEnd
     ]
+    if len(snpIndicesToKeep) == 0:
+        sys.exit(
+            "Error: no SNPs in the given segment of the chr arm; exiting\n"
+        )
     positions = [positions[i] for i in snpIndicesToKeep]
     genos = allel.GenotypeArray(genos.subset(sel0=snpIndicesToKeep))
 
