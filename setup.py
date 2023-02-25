@@ -9,7 +9,7 @@ shic_stats = Extension("diploshic.shicstats",
                                 "diploshic/utils.c"],
                       )
 setup(name='diploSHIC',
-      version='0.333333',
+      version='0.4',
       description='diploSHIC',
       long_description=long_description,
       long_description_content_type="text/markdown",
