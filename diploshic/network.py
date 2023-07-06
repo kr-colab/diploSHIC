@@ -97,7 +97,7 @@ def construct_model(input_shape, domain_adaptation=False):
         domain_output = Dense(1, name="discriminator", activation="sigmoid")(da)
         model = Model(inputs=[model_in], outputs=[output, domain_output])
         model.compile(optimizer='adam',
-                        loss=[masked_cce, masked_bce],
+                        loss={'predictor': masked_cce, 'discriminator': masked_bce},
                         loss_weights = [1, 1], # equal weighing of two tasks
                         metrics={'predictor': 'accuracy', 'discriminator': 'accuracy'})
     else:
