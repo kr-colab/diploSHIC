@@ -322,13 +322,11 @@ if argsDict["mode"] in ["train", "predict"]:
     matplotlib.use("Agg")
 
     import numpy as np
-    import pandas as pd
 
     from sklearn.model_selection import train_test_split
     from keras.utils import to_categorical
     from keras.preprocessing.image import ImageDataGenerator
     from keras.callbacks import EarlyStopping, ModelCheckpoint
-    from keras.models import model_from_json
 
     from diploshic.network import construct_model
     from diploshic.domain_adaptive_dataloader import DADiploSHICDataLoader
@@ -535,6 +533,8 @@ if argsDict["mode"] == "train":
         plt.savefig(confusionFile, bbox_inches="tight")
 
 elif argsDict["mode"] == "predict":
+    from keras.models import model_from_json
+    import pandas as pd
 
     # import data from predictFile
     x_df = pd.read_table(argsDict["predictFile"])
