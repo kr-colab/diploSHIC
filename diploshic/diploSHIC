@@ -1,6 +1,20 @@
 #!/usr/bin/env python
 
 import argparse, time, sys, subprocess
+import matplotlib
+matplotlib.use("Agg")
+
+import numpy as np
+import pandas as pd
+
+from sklearn.model_selection import train_test_split
+from keras.utils import to_categorical
+from keras.preprocessing.image import ImageDataGenerator
+from keras.callbacks import EarlyStopping, ModelCheckpoint
+from keras.models import model_from_json
+
+from network import construct_model
+from domain_adaptive_dataloader import DADiploSHICDataLoader
 
 pyExec = sys.executable
 print(pyExec)
@@ -44,6 +58,12 @@ parser_a.add_argument(
     type=int,
     help="max epochs for training CNN (default = 100)",
     default=100,
+)
+parser_a.add_argument(
+    "--domain-adaptation",
+    action='store_true',
+    help="Optional Flag to run model with Domain Adaptation",
+    default=False,
 )
 parser_a.add_argument(
     "--numSubWins",
@@ -311,21 +331,6 @@ argsDict = vars(args)
 if argsDict["mode"] in ["train", "predict"]:
     ###########################################################
     # Import a bunch of libraries if everything checks out
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import numpy as np
-    import tensorflow as tf
-    from keras.models import Sequential, Model
-    from keras import optimizers
-    from keras.layers import Dense, Dropout, Activation, Flatten, Input
-    from keras.layers import Conv2D, MaxPooling2D, concatenate
-    from sklearn.model_selection import train_test_split
-    from keras.preprocessing.image import ImageDataGenerator
-    from keras.callbacks import EarlyStopping, ModelCheckpoint
-    import keras.backend as K
-    import fnmatch
-
     # nDims = argsDict['nDims']
     numSubWins = argsDict["numSubWins"]
 
@@ -349,7 +354,6 @@ if argsDict["mode"] == "train":
     ls1 = np.reshape(lsoft, (lsoft.shape[0], nDims, numSubWins))
     lhard = np.loadtxt(trainingDir + "linkedHard.fvec", skiprows=1)
     lh1 = np.reshape(lhard, (lhard.shape[0], nDims, numSubWins))
-
     both = np.concatenate((h1, n1, s1, ls1, lh1))
     y = np.concatenate(
         (
@@ -360,12 +364,24 @@ if argsDict["mode"] == "train":
             np.repeat(4, len(lh1)),
         )
     )
-
     # reshape both to explicitly set depth image. need for theanno not sure with tensorflow
     both = both.reshape(both.shape[0], nDims, numSubWins, 1)
-    if trainingDir == testingDir:
+    if argsDict["domain_adaptation"]:
+        empirical = np.loadtxt(trainingDir + "empirical.fvec", skiprows=1)
+        emp1 = np.reshape(empirical, (empirical.shape[0], nDims, numSubWins))
+        emp1 = emp1.reshape(emp1.shape[0], nDims, numSubWins, 1)
+        if trainingDir == testingDir:
+            X_train, X_test, X_train_emp, X_test_emp, y_train, y_test = train_test_split(
+                both, emp1, y, test_size=0.2
+            )
+        else:
+            X_train_emp = emp1
+            empirical = np.loadtxt(trainingDir + "empirical.fvec", skiprows=1)
+            emp1 = np.reshape(empirical, (empirical.shape[0], nDims, numSubWins))
+            X_test_emp = emp1.reshape(emp1.shape[0], nDims, numSubWins, 1)
+    elif trainingDir == testingDir:
         X_train, X_test, y_train, y_test = train_test_split(
-            both, y, test_size=0.2
+                both, y, test_size=0.2
         )
     else:
         X_train = both
@@ -381,7 +397,6 @@ if argsDict["mode"] == "train":
         ls1 = np.reshape(lsoft, (lsoft.shape[0], nDims, numSubWins))
         lhard = np.loadtxt(testingDir + "linkedHard.fvec", skiprows=1)
         lh1 = np.reshape(lhard, (lhard.shape[0], nDims, numSubWins))
-
         both2 = np.concatenate((h1, n1, s1, ls1, lh1))
         X_test = both2.reshape(both2.shape[0], nDims, numSubWins, 1)
         y_test = np.concatenate(
@@ -394,94 +409,43 @@ if argsDict["mode"] == "train":
             )
         )
 
-    Y_train = tf.keras.utils.to_categorical(y_train, 5)
-    Y_test = tf.keras.utils.to_categorical(y_test, 5)
-    X_valid, X_test, Y_valid, Y_test = train_test_split(
-        X_test, Y_test, test_size=0.5
-    )
+    Y_train = to_categorical(y_train, 5)
+    Y_test = to_categorical(y_test, 5)
 
-    datagen = ImageDataGenerator(
-        featurewise_center=True,
-        featurewise_std_normalization=True,
-        horizontal_flip=True,
-    )
+    if argsDict["domain_adaptation"]:
+        X_valid, X_test, X_valid_emp, X_test_emp, Y_valid, Y_test = train_test_split(
+            X_test, X_test_emp, Y_test, test_size=0.5
+        )
+        datagen = DADiploSHICDataLoader(X_train, X_train_emp, Y_train, batch_size=32)
+        validation_gen = DADiploSHICDataLoader(X_test, X_test_emp, Y_test, batch_size=32)
+        test_gen = DADiploSHICDataLoader(X_valid, X_valid_emp, Y_valid, batch_size=32)
+    else:
+        X_valid, X_test, Y_valid, Y_test = train_test_split(
+            X_test, Y_test, test_size=0.5
+        )
+        dataget = ImageDataGenerator(
+            featurewise_center=True,
+            featurewise_std_normalization=True,
+            horizontal_flip=True,
+        )
 
-    validation_gen = ImageDataGenerator(
-        featurewise_center=True,
-        featurewise_std_normalization=True,
-        horizontal_flip=False,
-    )
-    test_gen = ImageDataGenerator(
-        featurewise_center=True,
-        featurewise_std_normalization=True,
-        horizontal_flip=False,
-    )
+        validation_gen = ImageDataGenerator(
+            featurewise_center=True,
+            featurewise_std_normalization=True,
+            horizontal_flip=False,
+        )
+        test_gen = ImageDataGenerator(
+            featurewise_center=True,
+            featurewise_std_normalization=True,
+            horizontal_flip=False,
+        )
 
     # print(X_train.shape)
     print("training set has %d examples" % X_train.shape[0])
     print("validation set has %d examples" % X_valid.shape[0])
     print("test set has %d examples" % X_test.shape[0])
 
-    model_in = Input(X_train.shape[1:])
-    h = Conv2D(128, 3, activation="relu", padding="same", name="conv1_1")(
-        model_in
-    )
-    h = Conv2D(64, 3, activation="relu", padding="same", name="conv1_2")(h)
-    h = MaxPooling2D(pool_size=3, name="pool1", padding="same")(h)
-    h = Dropout(0.15, name="drop1")(h)
-    h = Flatten(name="flaten1")(h)
-
-    dh = Conv2D(
-        128,
-        2,
-        activation="relu",
-        dilation_rate=[1, 3],
-        padding="same",
-        name="dconv1_1",
-    )(model_in)
-    dh = Conv2D(
-        64,
-        2,
-        activation="relu",
-        dilation_rate=[1, 3],
-        padding="same",
-        name="dconv1_2",
-    )(dh)
-    dh = MaxPooling2D(pool_size=2, name="dpool1")(dh)
-    dh = Dropout(0.15, name="ddrop1")(dh)
-    dh = Flatten(name="dflaten1")(dh)
-
-    dh1 = Conv2D(
-        128,
-        2,
-        activation="relu",
-        dilation_rate=[1, 4],
-        padding="same",
-        name="dconv4_1",
-    )(model_in)
-    dh1 = Conv2D(
-        64,
-        2,
-        activation="relu",
-        dilation_rate=[1, 4],
-        padding="same",
-        name="dconv4_2",
-    )(dh1)
-    dh1 = MaxPooling2D(pool_size=2, name="d1pool1")(dh1)
-    dh1 = Dropout(0.15, name="d1drop1")(dh1)
-    dh1 = Flatten(name="d1flaten1")(dh1)
-
-    h = concatenate([h, dh, dh1])
-    h = Dense(512, name="512dense", activation="relu")(h)
-    h = Dropout(0.2, name="drop7")(h)
-    h = Dense(128, name="last_dense", activation="relu")(h)
-    h = Dropout(0.1, name="drop8")(h)
-    output = Dense(5, name="out_dense", activation="softmax")(h)
-    model = Model(inputs=[model_in], outputs=[output])
-
-    model.compile(
-        loss="categorical_crossentropy", optimizer="adam", metrics=["accuracy"]
-    )
+    model = construct_model(X_train.shape[1:], domain_adaptation=argsDict["domain_adaptation"])
 
     # define early stopping callback
     earlystop = EarlyStopping(
@@ -507,24 +471,39 @@ if argsDict["mode"] == "train":
 
     callbacks_list = [earlystop, checkpoint]
     # callbacks_list = [earlystop] #turning off checkpointing-- just want accuracy assessment
-
-    datagen.fit(X_train)
-    validation_gen.fit(X_valid)
-    test_gen.fit(X_test)
     start = time.time()
-    model.fit(
-        datagen.flow(X_train, Y_train, batch_size=32),
-        steps_per_epoch=len(X_train) / 32,
-        epochs=epochOption,
-        verbose=1,
-        callbacks=callbacks_list,
-        validation_data=validation_gen.flow(X_valid, Y_valid, batch_size=32),
-        validation_steps=len(X_test) / 32,
-    )
-    # model.fit(X_train, Y_train, batch_size=32, epochs=100,validation_data=(X_test,Y_test),callbacks=callbacks_list, verbose=1)
-    score = model.evaluate(
-        test_gen.flow(X_test, Y_test, batch_size=32), steps=len(Y_test) / 32
-    )
+
+    if argsDict["domain_adaptation"]:
+        model.fit(
+            datagen, #.flow(X_train, Y_train, batch_size=32),
+            steps_per_epoch=len(X_train) / 32,
+            epochs=epochOption,
+            verbose=1,
+            callbacks=callbacks_list,
+            validation_data=validation_gen, #.flow(X_valid, Y_valid, batch_size=32),
+            validation_steps=len(X_test) / 32,
+        )
+        score = model.evaluate(
+            test_gen, #.flow(X_test, Y_test, batch_size=32), 
+            steps=len(Y_test) / 32
+        )
+    else:
+        datagen.fit(X_train)
+        validation_gen.fit(X_valid)
+        test_gen.fit(X_test)
+        model.fit(
+            datagen.flow(X_train, Y_train, batch_size=32),
+            steps_per_epoch=len(X_train) / 32,
+            epochs=epochOption,
+            verbose=1,
+            callbacks=callbacks_list,
+            validation_data=validation_gen.flow(X_valid, Y_valid, batch_size=32),
+            validation_steps=len(X_test) / 32,
+        )
+        score = model.evaluate(
+            test_gen.flow(X_test, Y_test, batch_size=32), 
+            steps=len(Y_test) / 32
+        )
     sys.stderr.write(
         "total time spent fitting and evaluating: %f secs\n"
         % (time.time() - start)
@@ -555,8 +534,6 @@ if argsDict["mode"] == "train":
         plt.savefig(confusionFile, bbox_inches="tight")
 
 elif argsDict["mode"] == "predict":
-    import pandas as pd
-    from keras.models import model_from_json
 
     # import data from predictFile
     x_df = pd.read_table(argsDict["predictFile"])
