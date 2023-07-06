@@ -1,20 +1,6 @@
 #!/usr/bin/env python
 
 import argparse, time, sys, subprocess
-import matplotlib
-matplotlib.use("Agg")
-
-import numpy as np
-import pandas as pd
-
-from sklearn.model_selection import train_test_split
-from keras.utils import to_categorical
-from keras.preprocessing.image import ImageDataGenerator
-from keras.callbacks import EarlyStopping, ModelCheckpoint
-from keras.models import model_from_json
-
-from network import construct_model
-from domain_adaptive_dataloader import DADiploSHICDataLoader
 
 pyExec = sys.executable
 print(pyExec)
@@ -332,6 +318,21 @@ if argsDict["mode"] in ["train", "predict"]:
     ###########################################################
     # Import a bunch of libraries if everything checks out
     # nDims = argsDict['nDims']
+    import matplotlib
+    matplotlib.use("Agg")
+
+    import numpy as np
+    import pandas as pd
+
+    from sklearn.model_selection import train_test_split
+    from keras.utils import to_categorical
+    from keras.preprocessing.image import ImageDataGenerator
+    from keras.callbacks import EarlyStopping, ModelCheckpoint
+    from keras.models import model_from_json
+
+    from network import construct_model
+    from domain_adaptive_dataloader import DADiploSHICDataLoader
+    
     numSubWins = argsDict["numSubWins"]
 
 if argsDict["mode"] == "train":
