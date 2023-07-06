@@ -102,7 +102,5 @@ def construct_model(input_shape, domain_adaptation=False):
                         metrics={'predictor': 'accuracy', 'discriminator': 'accuracy'})
     else:
         model = Model(inputs=[model_in], outputs=[output])
-        model.compile(optimizer='adam', 
-                      loss = masked_cce, 
-                      metrics=['accuracy'])
+        model.compile(loss="categorical_crossentropy", optimizer="adam", metrics=["accuracy"])
     return model

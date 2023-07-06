@@ -330,9 +330,9 @@ if argsDict["mode"] in ["train", "predict"]:
     from keras.callbacks import EarlyStopping, ModelCheckpoint
     from keras.models import model_from_json
 
-    from network import construct_model
-    from domain_adaptive_dataloader import DADiploSHICDataLoader
-    
+    from diploshic.network import construct_model
+    from diploshic.domain_adaptive_dataloader import DADiploSHICDataLoader
+
     numSubWins = argsDict["numSubWins"]
 
 if argsDict["mode"] == "train":
@@ -424,7 +424,7 @@ if argsDict["mode"] == "train":
         X_valid, X_test, Y_valid, Y_test = train_test_split(
             X_test, Y_test, test_size=0.5
         )
-        dataget = ImageDataGenerator(
+        datagen = ImageDataGenerator(
             featurewise_center=True,
             featurewise_std_normalization=True,
             horizontal_flip=True,
