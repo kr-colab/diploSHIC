@@ -1,8 +1,11 @@
-from tensorflow import custom_gradient, identity, boolean_mask, not_equal
+from tensorflow import custom_gradient, identity, boolean_mask, not_equal, reduce_all
+from tensorflow import print as tfprint
 from keras.models import Model
 from keras.layers import Dense, Dropout, Flatten, Input
 from keras.layers import Conv2D, MaxPooling2D, concatenate, Layer
-from keras.losses import binary_crossentropy, categorical_crossentropy
+from keras.metrics import binary_crossentropy, categorical_crossentropy
+import numpy as np
+
 
 @custom_gradient
 def grad_reverse(x):
@@ -27,8 +30,9 @@ def masked_bce(y_true, y_pred):
   return binary_crossentropy(y_true, y_pred)
 
 def masked_cce(y_true, y_pred):
-  y_pred = boolean_mask(y_pred, not_equal(y_true, -1))
-  y_true = boolean_mask(y_true, not_equal(y_true, -1))
+  mask = reduce_all(not_equal(y_true, -1),1)
+  y_pred = boolean_mask(y_pred, mask)
+  y_true = boolean_mask(y_true, mask)
   return categorical_crossentropy(y_true, y_pred)
     
 
@@ -102,5 +106,5 @@ def construct_model(input_shape, domain_adaptation=False):
                         metrics={'predictor': 'accuracy', 'discriminator': 'accuracy'})
     else:
         model = Model(inputs=[model_in], outputs=[output])
-        model.compile(loss="categorical_crossentropy", optimizer="adam", metrics=["accuracy"])
+        model.compile(loss=masked_cce, optimizer="adam", metrics=["accuracy"])
     return model
