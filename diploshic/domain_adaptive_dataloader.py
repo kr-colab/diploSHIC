@@ -5,14 +5,14 @@ import gc
 
 class DADiploSHICDataLoader(Sequence):
   def __init__(self, X_src, X_tgt, Y_pred, batch_size):
-    self.tgt_data = X_src
-    self.src_data = X_tgt
+    self.tgt_data = X_tgt
+    self.src_data = X_src
     self.y_pred = Y_pred
 
     self.batch_size = batch_size
 
-    src_size = self.src_bgtm.shape[0]
-    tgt_size = self.tar_bgtm.shape[0]
+    src_size = self.src_data.shape[0]
+    tgt_size = self.tgt_data.shape[0]
 
     self.no_batch = int(np.floor(np.minimum(src_size, tgt_size) / self.batch_size)) # model sees training sample at most once per epoch
     self.src_pred_idx = np.arange(src_size)
@@ -40,16 +40,15 @@ class DADiploSHICDataLoader(Sequence):
     batch_X = np.concatenate((self.src_data[pred_batch_idx],
                           self.src_data[discrSrc_batch_idx],
                           self.tgt_data[discrTgt_batch_idx]))
-
     batch_Y_pred = np.concatenate((self.y_pred[pred_batch_idx],
-                                   -1*np.ones(len(discrSrc_batch_idx)),
-                                   -1*np.ones(len(discrTgt_batch_idx))))
+                                   -1*np.ones((len(discrSrc_batch_idx), self.y_pred.shape[1])),
+                                   -1*np.ones((len(discrTgt_batch_idx), self.y_pred.shape[1]))))
 
     batch_Y_discr = np.concatenate((-1*np.ones(len(pred_batch_idx)),
                                     np.zeros(len(discrSrc_batch_idx)),
                                     np.ones(len(discrTgt_batch_idx))))
 
-    assert batch_X.shape[0] == self.batch_size*2, batch_X.shape[0]
-    assert batch_Y_pred.shape == batch_Y_discr.shape, (batch_Y_pred, batch_Y_discr)
+    assert batch_X.shape[0] == self.batch_size*2, (batch_X.shape, self.batch_size*2)
+    assert batch_Y_pred.shape[0] == batch_Y_discr.shape[0], (batch_Y_pred.shape, batch_Y_discr.shape)
 
     return batch_X, {"predictor":batch_Y_pred, "discriminator":batch_Y_discr}

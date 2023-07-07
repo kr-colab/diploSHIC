@@ -367,7 +367,8 @@ if argsDict["mode"] == "train":
     both = both.reshape(both.shape[0], nDims, numSubWins, 1)
     if argsDict["domain_adaptation"]:
         empirical = np.loadtxt(trainingDir + "empirical.fvec", skiprows=1)
-        emp1 = np.reshape(empirical, (empirical.shape[0], nDims, numSubWins))
+        emp = np.reshape(empirical, (empirical.shape[0], nDims, numSubWins))
+        emp1 = np.concatenate((emp,emp,emp,emp,emp))
         emp1 = emp1.reshape(emp1.shape[0], nDims, numSubWins, 1)
         if trainingDir == testingDir:
             X_train, X_test, X_train_emp, X_test_emp, y_train, y_test = train_test_split(
