@@ -1,4 +1,4 @@
-![example workflow](https://github.com/github/docs/actions/workflows/main.yml/badge.svg)
+[![Build](https://github.com/kr-colab/diploSHIC/actions/workflows/python-build.yml/badge.svg)](https://github.com/kr-colab/diploSHIC/actions/workflows/python-build.yml)
 [![PyPI version](https://badge.fury.io/py/diploSHIC.svg)](https://badge.fury.io/py/diploSHIC)
 
 # diploS/HIC
