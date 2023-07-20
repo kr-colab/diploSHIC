@@ -101,9 +101,9 @@ def construct_model(input_shape, domain_adaptation=False, da_weight=1):
     if domain_adaptation:
         da = GradReverse()(h_concated)
         da = Dense(512, name="DA512dense", activation="relu")(da)
-        da = Dropout(0.2, name="DADrop1")(da)
+        #da = Dropout(0.2, name="DADrop1")(da)
         da = Dense(128, name="DA128dense", activation="relu")(da)
-        da = Dropout(0.1, name="DADrop2")(da)
+        #da = Dropout(0.1, name="DADrop2")(da)
         domain_output = Dense(1, name="discriminator", activation="sigmoid")(da)
         model = Model(inputs=[model_in], outputs=[output, domain_output])
         model.compile(optimizer='adam',
