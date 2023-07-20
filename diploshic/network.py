@@ -3,7 +3,6 @@ from keras.models import Model
 from keras.layers import Dense, Dropout, Flatten, Input
 from keras.layers import Conv2D, MaxPooling2D, concatenate, Layer
 from keras.metrics import binary_crossentropy, categorical_crossentropy, categorical_accuracy, binary_accuracy
-from keras import backend as K
 
 
 @custom_gradient
