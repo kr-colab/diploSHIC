@@ -1,6 +1,6 @@
 package:
  name: diploshic
- version: "0.4"
+ version: "1.1.0"
  
 source:
  git_url: https://github.com/kr-colab/diploshic

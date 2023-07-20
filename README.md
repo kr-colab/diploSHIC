@@ -1,3 +1,6 @@
+![example workflow](https://github.com/github/docs/actions/workflows/main.yml/badge.svg)
+[![PyPI version](https://badge.fury.io/py/diploSHIC.svg)](https://badge.fury.io/py/diploSHIC)
+
 # diploS/HIC
 This repo contains the implementation for `diploS/HIC` as described in Kern and Schrider (2018; https://doi.org/10.1534/g3.118.200262), along 
 with its associated support scripts. `diploS/HIC` uses a deep convolutional neural network to identify
