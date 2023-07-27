@@ -48,6 +48,12 @@ def load_arg_dict():
         default=1,
     )
     parser_a.add_argument(
+        "--pred-weight",
+        type=float,
+        help="Relative weight of Predictor loss: DA Discriminator loss",
+        default=1,
+    )
+    parser_a.add_argument(
         "--empiricalDir",
         type=str,
         help="Path to directory containing empirical data for domain adaptation",

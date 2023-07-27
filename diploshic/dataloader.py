@@ -32,13 +32,10 @@ def load_empirical_fvecs_from_directory(directory, n_subwin=11):
 
 
 class DADiploSHICDataLoader(Sequence):
-  def __init__(self, X_src, X_tgt, Y_pred, batch_size, N=None):
-    mult = 1
-    if N is not None:
-      mult = N // X_tgt.shape[0]
-    self.tgt_data = np.repeat(X_tgt, mult, axis=0)
-    self.src_data = np.repeat(X_src, mult, axis=0)
-    self.y_pred = np.repeat(Y_pred, mult, axis=0)
+  def __init__(self, X_src, X_tgt, Y_pred, batch_size):
+    self.tgt_data = X_tgt
+    self.src_data = X_src
+    self.y_pred = Y_pred
     
     self.batch_size = batch_size
     src_size = self.src_data.shape[0]
@@ -81,12 +78,9 @@ class DADiploSHICDataLoader(Sequence):
   
   
 class DiploSHICDataLoader(Sequence):
-  def __init__(self, X_src, Y_pred, batch_size, N=None):
-    mult = 1
-    if N is not None:
-      mult = N // X_src.shape[0]
-    self.data = np.repeat(X_src, mult, axis=0)
-    self.y_pred = np.repeat(Y_pred, mult, axis=0)
+  def __init__(self, X_src, Y_pred, batch_size):
+    self.data = X_src
+    self.y_pred = Y_pred
     self.batch_size = batch_size
     size = self.data.shape[0]
     self.no_batch = int(np.floor(size/ self.batch_size))

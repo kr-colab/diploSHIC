@@ -5,9 +5,9 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import time, sys, subprocess
 from diploshic.parser import load_arg_dict
 
-TEST_FRAC = 0.2
+TEST_FRAC = 0.1
 VALID_FRAC = 0.5
-BATCH_SIZE = 32
+BATCH_SIZE = 50
 
 pyExec = sys.executable
 print(pyExec)
@@ -28,7 +28,6 @@ if argsDict["mode"] in ["train", "predict"]:
 
     from sklearn.model_selection import train_test_split
     from keras.utils import to_categorical
-    from keras.preprocessing.image import ImageDataGenerator
     from keras.callbacks import EarlyStopping, ModelCheckpoint
 
     from diploshic.network import construct_model
@@ -71,35 +70,29 @@ if argsDict["mode"] == "train":
             
     Y_train = to_categorical(y_train, 5)
     Y_test = to_categorical(y_test, 5)
-
+    X_valid, X_train, Y_valid, Y_train = train_test_split(X_train, Y_train, test_size=VALID_FRAC)
     if argsDict["domain_adaptation"]:
-        X_valid, X_test, Y_valid, Y_test = train_test_split(
-            X_test, Y_test, test_size=VALID_FRAC
-        )
-        if Y_test_emp is not None:
-            X_valid_emp, X_test_emp, Y_valid_emp, Y_test_emp = train_test_split(X_test_emp, Y_test_emp, test_size=VALID_FRAC)
+        if Y_train_emp is not None:
+            X_valid_emp, X_train_emp, Y_valid_emp, Y_train_emp = train_test_split(X_train_emp, Y_train_emp, test_size=VALID_FRAC)
         else:
-             X_valid_emp, X_test_emp = train_test_split(X_test_emp, test_size=VALID_FRAC)
+             X_valid_emp, X_train_emp = train_test_split(X_train_emp, test_size=VALID_FRAC)
         datagen = DADiploSHICDataLoader(X_train, X_train_emp, Y_train, batch_size=BATCH_SIZE)
-        validation_gen = DADiploSHICDataLoader(X_valid, X_valid_emp, Y_valid, batch_size=BATCH_SIZE, N=X_train.shape[0])
+        validation_gen = DADiploSHICDataLoader(X_valid, X_valid_emp, Y_valid, batch_size=BATCH_SIZE)
         test_gen = DADiploSHICDataLoader(X_test, X_test_emp, Y_test, batch_size=BATCH_SIZE)
         test_emp_gen = DADiploSHICDataLoader(X_test_emp, X_test_emp, Y_test_emp, batch_size=BATCH_SIZE)
     else:
-        X_valid, X_test, Y_valid, Y_test = train_test_split(
-            X_test, Y_test, test_size=VALID_FRAC
-        )
         datagen = DiploSHICDataLoader(X_train, Y_train, batch_size=BATCH_SIZE)
-        validation_gen = DiploSHICDataLoader(X_valid, Y_valid, batch_size=BATCH_SIZE, N=X_train.shape[0])
+        validation_gen = DiploSHICDataLoader(X_valid, Y_valid, batch_size=BATCH_SIZE)
         test_gen = DiploSHICDataLoader(X_test, Y_test, batch_size=BATCH_SIZE)
 
-    print("training set has %d examples" % X_train.shape[0])
-    print("validation set has %d examples" % X_valid.shape[0])
-    print("test set has %d examples" % X_test.shape[0])
+    print("training set has %d examples (%d batches of %d)" % (X_train.shape[0], X_train.shape[0] / BATCH_SIZE, BATCH_SIZE))
+    print("validation set has %d examples (%d batches of %d)" % (X_valid.shape[0], X_valid.shape[0] / BATCH_SIZE, BATCH_SIZE))
+    print("test set has %d examples (%d batches of %d)" % (X_test.shape[0], X_test.shape[0] / BATCH_SIZE, BATCH_SIZE))
     if argsDict["domain_adaptation"]:
-        print("empirical training set has %d examples" % X_train_emp.shape[0])
-        print("empirical validation set has %d examples" % X_valid_emp.shape[0])
+        print("empirical training set has %d examples (%d batches of %d)" % (X_train_emp.shape[0], X_train_emp.shape[0] / BATCH_SIZE, BATCH_SIZE))
+        print("empirical validation set has %d examples (%d batches of %d)" % (X_train_emp.shape[0], X_train_emp.shape[0] / BATCH_SIZE, BATCH_SIZE))
 
-    model = construct_model(X_train.shape[1:], domain_adaptation=argsDict["domain_adaptation"], da_weight=argsDict["da_weight"])
+    model = construct_model(X_train.shape[1:], domain_adaptation=argsDict["domain_adaptation"], da_weight=argsDict["da_weight"], pred_weight=argsDict["pred_weight"])
 
     model_json = model.to_json()
     with open(outputModel + ".json", "w") as json_file:
@@ -122,8 +115,8 @@ if argsDict["mode"] == "train":
         save_weights_only=True,
         mode="auto",
     )
-    callbacks_list = [checkpoint]
-    # callbacks_list = [earlystop, checkpoint]
+    # callbacks_list = [checkpoint]
+    callbacks_list = [earlystop, checkpoint]
     start = time.time()
 
     if argsDict["domain_adaptation"]:
@@ -134,14 +127,17 @@ if argsDict["mode"] == "train":
             verbose=1,
             callbacks=callbacks_list,
             validation_data=validation_gen,
-            validation_steps=len(X_test) / BATCH_SIZE,
+            validation_steps=len(X_valid) / BATCH_SIZE,
         )
         score = model.evaluate(
             test_gen,
             steps=len(Y_test) / BATCH_SIZE, 
             return_dict=True)
-        score_emp = model.evaluate(
-            test_emp_gen, steps = len(Y_test_emp) / BATCH_SIZE, return_dict=True)
+        #predictions = model.predict(X_test)
+        #preds = np.argmax(predictions, axis=1)
+        score_emp = model.evaluate(test_emp_gen, steps = len(Y_test_emp) / BATCH_SIZE, return_dict=True)
+        #emppredictions = model.predict(X_test_emp)
+        #emppreds = np.argmax(emppredictions, axis=1)
     else:
         training_history = model.fit(
             datagen, 
@@ -150,13 +146,15 @@ if argsDict["mode"] == "train":
             verbose=1,
             callbacks=callbacks_list,
             validation_data=validation_gen, 
-            validation_steps=len(X_test) / BATCH_SIZE,
+            validation_steps=len(X_valid) / BATCH_SIZE,
         )
         score = model.evaluate(
             test_gen, 
             steps=len(Y_test) / BATCH_SIZE,
             return_dict=True
         )
+        #predictions = model.predict(X_test)
+        #preds = np.argmax(predictions, axis=1)
         if empiricalDir is not None:
             X_emp, y_emp = load_fvecs_from_directory(empiricalDir, numSubWins)
             X_train_emp, X_test_emp, y_train_emp, y_test_emp = train_test_split(X_emp, y_emp, test_size=TEST_FRAC)
@@ -165,12 +163,16 @@ if argsDict["mode"] == "train":
             score_emp = model.evaluate(emp_test_gen,
                                     steps = len(Y_test_emp) / BATCH_SIZE, 
                                     return_dict=True)
-        
+            #emppredictions = model.predict(X_test_emp)
+            #emppreds = np.argmax(emppredictions, axis=1)            
+                    
     sys.stderr.write(
         "total time spent fitting and evaluating: %f secs\n"
         % (time.time() - start)
     )
-    
+    #np.savez(outputModel + "_preds.npz", pred=preds, true=y_test)
+    #if empiricalDir is not None:
+    #    np.savez(outputModel + "_emp_preds.npz", pred=emppreds, true=y_test_emp)
     with open(outputModel + "_training_history.json", "w") as json_file:
         metadata = {'history': training_history.history, 'score': score}
         if empiricalDir is not None:
@@ -179,19 +181,19 @@ if argsDict["mode"] == "train":
         
     if argsDict["domain_adaptation"]:
         print("evaluation on source test set:")
-        print(f"diploSHIC loss: Predictor: {score['predictor_loss']}, Discriminator: {score['discriminator_loss']}")
-        print(f"diploSHIC accuracy: Predictor: {score['predictor_masked_categorical_accuracy']}, Discriminator: {score['discriminator_masked_binary_accuracy']}")
+        print(f"diploSHIC loss: Predictor: {score['predictor_loss']:3f}, Discriminator: {score['discriminator_loss']:3f}")
+        print(f"diploSHIC accuracy: Predictor: {score['predictor_masked_categorical_accuracy']:3f}, Discriminator: {score['discriminator_masked_binary_accuracy']:3f}")
         print("evaluation on target test set:")
-        print(f"diploSHIC loss: Predictor: {score_emp['predictor_loss']}, Discriminator: {score_emp['discriminator_loss']}")
-        print(f"diploSHIC accuracy: Predictor: {score_emp['predictor_masked_categorical_accuracy']}, Discriminator: {score_emp['discriminator_masked_binary_accuracy']}")
+        print(f"diploSHIC loss: Predictor: {score_emp['predictor_loss']:3f}, Discriminator: {score_emp['discriminator_loss']:3f}")
+        print(f"diploSHIC accuracy: Predictor: {score_emp['predictor_masked_categorical_accuracy']:3f}, Discriminator: {score_emp['discriminator_masked_binary_accuracy']:3f}")
     else:
-        print("evaluation on src test set:")
-        print("diploSHIC loss: %f" % score['loss'])
-        print("diploSHIC accuracy: %f" % score['masked_categorical_accuracy'])
+        print("evaluation on source test set:")
+        print(f"diploSHIC loss: {score['loss']:3f}")
+        print(f"diploSHIC accuracy: {score['masked_categorical_accuracy']:3f}")
         if empiricalDir is not None:
             print("evaluation on target test set:")
-            print("diploSHIC loss: %f" % score_emp['loss'])
-            print("diploSHIC accuracy: %f" % score_emp['masked_categorical_accuracy'])
+            print(f"diploSHIC loss: {score_emp['loss']:3f}")
+            print(f"diploSHIC accuracy: {score_emp['masked_categorical_accuracy']:3f}")
             
     if confusionFile:
         from diploshic.misc import plot_confusion_matrix
@@ -221,8 +223,9 @@ if argsDict["mode"] == "train":
 
 elif argsDict["mode"] == "predict":
     from keras.models import model_from_json
+    from keras.preprocessing.image import ImageDataGenerator
     import pandas as pd
-
+    
     # import data from predictFile
     x_df = pd.read_table(argsDict["predictFile"])
     if argsDict["simData"]:

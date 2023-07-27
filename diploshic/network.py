@@ -1,7 +1,7 @@
 from tensorflow import custom_gradient, identity, boolean_mask, not_equal, reduce_all
 from keras.models import Model
-from keras.layers import Dense, Dropout, Flatten, Input
-from keras.layers import Conv2D, MaxPooling2D, concatenate, Layer
+from keras.layers import Dense, Dropout, Flatten, Input, BatchNormalization
+from keras.layers import Conv2D, MaxPooling2D, concatenate, Layer, Activation
 from keras.metrics import binary_crossentropy, categorical_crossentropy, categorical_accuracy, binary_accuracy
 
 
@@ -42,7 +42,7 @@ def masked_binary_accuracy(y_true, y_pred):
   y_true = boolean_mask(y_true, mask)
   return binary_accuracy(y_true, y_pred)
 
-def construct_model(input_shape, domain_adaptation=False, da_weight=1):
+def construct_model(input_shape, domain_adaptation=False, da_weight=1, pred_weight=1):
     model_in = Input(input_shape)
     h = Conv2D(128, 3, activation="relu", padding="same", name="conv1_1")(
         model_in
@@ -93,20 +93,24 @@ def construct_model(input_shape, domain_adaptation=False, da_weight=1):
     dh1 = Flatten(name="d1flaten1")(dh1)
 
     h_concated = concatenate([h, dh, dh1])
-    h = Dense(512, name="512dense", activation="relu")(h_concated)
-    h = Dropout(0.2, name="drop7")(h)
-    h = Dense(128, name="last_dense", activation="relu")(h)
-    h = Dropout(0.1, name="drop8")(h)
+    h = Dense(512, name="512dense", use_bias=False)(h_concated)
+    h = BatchNormalization(name="512norm")(h)
+    h = Activation("relu", name="512relu")(h)
+    h = Dense(256, name="256dense", activation="relu")(h)
+    h = Dense(128, name="128dense", activation="relu")(h)
     output = Dense(5, name="predictor", activation="softmax")(h)
     if domain_adaptation:
         da = GradReverse()(h_concated)
-        da = Dense(512, name="DA512dense", activation="relu")(da)
+        da = Dense(512, name="DA512dense", use_bias=False)(da)
+        da = BatchNormalization(name="DA512norm")(da)
+        da = Activation("relu", name="DA512relu")(da)
+        da = Dense(256, name="DA256dense", activation="relu")(da)
         da = Dense(128, name="DA128dense", activation="relu")(da)
         domain_output = Dense(1, name="discriminator", activation="sigmoid")(da)
         model = Model(inputs=[model_in], outputs=[output, domain_output])
         model.compile(optimizer='adam',
                         loss={'predictor': masked_cce, 'discriminator': masked_bce},
-                        loss_weights = [1, da_weight],
+                        loss_weights = [pred_weight, da_weight],
                         metrics={'predictor': masked_categorical_accuracy, 'discriminator': masked_binary_accuracy})
     else:
         model = Model(inputs=[model_in], outputs=[output])
