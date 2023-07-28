@@ -20,8 +20,9 @@ class GradReverse(Layer):
     return grad_reverse(x)
 
 def masked_bce(y_true, y_pred):
-  y_pred = boolean_mask(y_pred, not_equal(y_true, -1))
-  y_true = boolean_mask(y_true, not_equal(y_true, -1))
+  mask = not_equal(y_true, -1)
+  y_pred = boolean_mask(y_pred, mask)
+  y_true = boolean_mask(y_true, mask)
   return binary_crossentropy(y_true, y_pred)
 
 def masked_cce(y_true, y_pred):

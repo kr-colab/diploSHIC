@@ -42,6 +42,7 @@ if argsDict["mode"] == "train":
     epochOption = argsDict["epochs"]
     outputModel = argsDict["outputModel"]
     confusionFile = argsDict["confusionFile"]
+    lossAccFile = argsDict["lossAccFile"]
     
     print("loading data now...")
     both, y = load_fvecs_from_directory(trainingDir, numSubWins)
@@ -194,6 +195,12 @@ if argsDict["mode"] == "train":
             print("evaluation on target test set:")
             print(f"diploSHIC loss: {score_emp['loss']:3f}")
             print(f"diploSHIC accuracy: {score_emp['masked_categorical_accuracy']:3f}")
+            
+    if lossAccFile:
+        from diploshic.misc import plot_loss_acc
+        import matplotlib.pyplot as plt
+        fig = plot_loss_acc(training_history.history)
+        plt.savefig(lossAccFile, bbox_inches="tight")
             
     if confusionFile:
         from diploshic.misc import plot_confusion_matrix

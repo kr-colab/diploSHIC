@@ -70,6 +70,11 @@ def load_arg_dict():
         help="optional file to which confusion matrix plot will be written (default = None)",
         default=None,
     )
+    parser_a.add_argument(
+        "--lossAccFile",
+        help="optional file to which the model training metrics plot will be written (default = None)",
+        default=None,
+    )
     parser_a.set_defaults(mode="train")
     parser_a._positionals.title = "required arguments"
     parser_b.add_argument(
