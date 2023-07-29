@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.sparse import coo_matrix
+from keras.metrics import categorical_accuracy
 
 """This is all a bunch of stuff copied from sk-learn 0.24.2 but shoving it in
 here for compatibility purposes. Some slight modifications were made."""
@@ -68,7 +69,8 @@ class ConfusionMatrixDisplay:
         xticks_rotation="horizontal",
         values_format=None,
         ax=None,
-        colorbar=True
+        colorbar=True,
+        title="",
     ):
         """Plot visualization.
         Parameters
@@ -145,7 +147,7 @@ class ConfusionMatrixDisplay:
 
         ax.set_ylim((n_classes - 0.5, -0.5))
         plt.setp(ax.get_xticklabels(), rotation=xticks_rotation)
-
+        ax.set_title(title)
         self.figure_ = fig
         self.ax_ = ax
         return self
@@ -295,7 +297,8 @@ def plot_confusion_matrix(
     values_format=None,
     cmap="viridis",
     ax=None,
-    colorbar=True
+    colorbar=True,
+    domain_adaptation=False
 ):
     """Plot Confusion Matrix.
     Read more in the :ref:`User Guide <confusion_matrix>`.
@@ -361,7 +364,8 @@ def plot_confusion_matrix(
     >>> plt.show()  # doctest: +SKIP
     """
 
-    y_pred = estimator.predict(X)
+    y_pred = estimator.predict(X)[0] if domain_adaptation else estimator.predict(X)
+    acc = categorical_accuracy(y_true, y_pred)
     cm = confusion_matrix(
         y_true,
         y_pred,
@@ -379,4 +383,28 @@ def plot_confusion_matrix(
         xticks_rotation=xticks_rotation,
         values_format=values_format,
         colorbar=colorbar,
+        title=f'Overall Accuracy: {acc*100:.2f}%'
     )
+
+
+def plot_training_metrics(hist, t='Training Metrics'):
+    import matplotlib.pyplot as plt
+    
+    fig, ax = plt.subplots(1, 2, figsize=(12, 4))
+    ax[0].plot(hist['loss'], label=f'loss', color='tab:blue', lw=2, alpha=0.8)
+    ax[0].plot(hist['val_loss'], label=f'val loss', color='tab:blue', lw=2, alpha=0.8, ls='--')
+    ax[0].axvline(np.arange(len(hist['loss']))[np.argmax(hist['val_acc'])], color='tab:orange', ls=':', lw=2, label='Best Model')
+
+    ax[1].plot(hist['acc'], label=f'acc', color='tab:blue', lw=2, alpha=0.8)
+    ax[1].plot(hist['val_acc'], label=f'val acc', color='tab:blue', lw=2, alpha=0.8, ls='--')
+    ax[1].axvline(np.arange(len(hist['loss']))[np.argmax(hist['val_acc'])], color='tab:orange', ls=':', lw=2, label='Best Model')
+
+    ax[0].set_xlabel('Epoch')
+    ax[0].set_ylabel('Loss')
+    ax[0].legend()
+    ax[1].set_xlabel('Epoch')
+    ax[1].set_ylabel('Accuracy (%)')
+    ax[1].legend()
+    t += f"SRC Test Acc: {hist['score']:.1f}%   TGT Test Acc: {hist['score_emp']:.1f}%"
+    plt.suptitle(t)
+    return fig
