@@ -7,7 +7,7 @@ from diploshic.parser import load_arg_dict
 
 TEST_FRAC = 0.1
 VALID_FRAC = 0.5
-BATCH_SIZE = 50
+BATCH_SIZE = 100
 
 pyExec = sys.executable
 print(pyExec)
@@ -104,7 +104,7 @@ if argsDict["mode"] == "train":
     earlystop = EarlyStopping(
         monitor=monitor,
         min_delta=0.001,
-        patience=5,
+        patience=3,
         verbose=1,
         mode="auto",
     )
@@ -197,9 +197,9 @@ if argsDict["mode"] == "train":
             print(f"diploSHIC accuracy: {score_emp['masked_categorical_accuracy']:3f}")
             
     if lossAccFile:
-        from diploshic.misc import plot_loss_acc
+        from diploshic.misc import plot_training_metrics
         import matplotlib.pyplot as plt
-        fig = plot_loss_acc(training_history.history)
+        fig = plot_training_metrics(training_history.history)
         plt.savefig(lossAccFile, bbox_inches="tight")
             
     if confusionFile:
