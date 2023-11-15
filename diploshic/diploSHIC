@@ -534,7 +534,7 @@ if argsDict["mode"] == "train":
     print("diploSHIC loss: %f" % score[0])
     print("diploSHIC accuracy: %f" % score[1])
     if confusionFile:
-        from misc import plot_confusion_matrix
+        from diploshic.misc import plot_confusion_matrix
         import matplotlib.pyplot as plt
 
         plot_confusion_matrix(
