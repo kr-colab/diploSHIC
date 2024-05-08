@@ -321,7 +321,7 @@ if argsDict["mode"] in ["train", "predict"]:
     from keras.layers import Dense, Dropout, Activation, Flatten, Input
     from keras.layers import Conv2D, MaxPooling2D, concatenate
     from sklearn.model_selection import train_test_split
-    from keras.preprocessing.image import ImageDataGenerator
+    from tensorflow.keras.preprocessing.image import ImageDataGenerator
     from keras.callbacks import EarlyStopping, ModelCheckpoint
     import keras.backend as K
     import fnmatch
@@ -495,7 +495,7 @@ if argsDict["mode"] == "train":
     model_json = model.to_json()
     with open(outputModel + ".json", "w") as json_file:
         json_file.write(model_json)
-    modWeightsFilepath = outputModel + ".weights.hdf5"
+    modWeightsFilepath = outputModel + ".weights.h5"
     checkpoint = ModelCheckpoint(
         modWeightsFilepath,
         monitor="val_accuracy",
@@ -514,16 +514,16 @@ if argsDict["mode"] == "train":
     start = time.time()
     model.fit(
         datagen.flow(X_train, Y_train, batch_size=32),
-        steps_per_epoch=len(X_train) / 32,
+        steps_per_epoch=int(len(X_train) / 32),
         epochs=epochOption,
         verbose=1,
         callbacks=callbacks_list,
         validation_data=validation_gen.flow(X_valid, Y_valid, batch_size=32),
-        validation_steps=len(X_test) / 32,
+        validation_steps=int(len(X_test) / 32),
     )
     # model.fit(X_train, Y_train, batch_size=32, epochs=100,validation_data=(X_test,Y_test),callbacks=callbacks_list, verbose=1)
     score = model.evaluate(
-        test_gen.flow(X_test, Y_test, batch_size=32), steps=len(Y_test) / 32
+        test_gen.flow(X_test, Y_test, batch_size=32), steps=int(len(Y_test) / 32)
     )
     sys.stderr.write(
         "total time spent fitting and evaluating: %f secs\n"
