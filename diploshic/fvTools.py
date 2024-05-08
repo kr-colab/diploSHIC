@@ -252,6 +252,7 @@ def readFa(faFileName, upper=False):
         fopen = open
     with fopen(faFileName, "rt") as faFile:
         reading = False
+        currChr = None
         for line in faFile:
             if line.startswith(">"):
                 if reading:
@@ -493,6 +494,10 @@ def readMaskDataForTraining(
     readingMasks = False
     isAccessible, isAccessibleArm = [], []
     genoMaskInfo = []
+    currChr = None
+    genos = None
+    positions = None
+    positions2SnpIndices = None
     with fopen(maskFileName, "rt") as maskFile:
         for line in maskFile:
             if line.startswith(">"):
@@ -916,7 +921,7 @@ def calcAndAppendStatValDiplo(
             - statVals["pi"][instanceIndex][subWinIndex]
         )
     elif statName == "HapCount":
-        statVals[statName][instanceIndex].append(len(hapsInSubWin.distinct()))
+        statVals[statName][instanceIndex].append(len(genosInSubWin.distinct()))
     elif statName == "nDiplos":
         diplotypeCounts = dps.getHaplotypeFreqSpec(genosNAlt)
         nDiplos = diplotypeCounts[genosNAlt.shape[1]]
@@ -1021,7 +1026,7 @@ def calcAndAppendStatValForScanDiplo(
         )
     elif statName == "HapCount":
         # AK: undefined variables
-        statVals[statName].append(len(hapsInSubWin.distinct()))
+        statVals[statName].append(len(genosInSubWin.distinct()))
     elif statName == "nDiplos":
         diplotypeCounts = dps.getHaplotypeFreqSpec(genosNAlt)
         nDiplos = diplotypeCounts[genosNAlt.shape[1]]
