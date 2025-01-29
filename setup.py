@@ -10,7 +10,7 @@ shic_stats = Extension(
 )
 setup(
     name="diploSHIC",
-    version="1.0.6",
+    version="1.0.7",
     description="diploSHIC",
     python_requires="<3.12,>=3.10",
     long_description=long_description,
