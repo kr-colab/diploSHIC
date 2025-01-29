@@ -21,11 +21,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
             submodules: true
       - name: Set up Python 3.10
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: 3.10
       - name: Build sdist
@@ -43,7 +43,7 @@ jobs:
         run: |
           docker run --rm -v `pwd`:/project -w /project quay.io/pypa/manylinux2014_x86_64:latest bash .github/workflows/Docker/buildwheel.sh
       - name: Upload Wheels
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: linux-wheels
           path: dist/wheelhouse
@@ -53,7 +53,7 @@ jobs:
     needs: ['Build_Wheel']
     steps:
       - name: Download all
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
       - name: Move to dist
         run: |
           mkdir dist
