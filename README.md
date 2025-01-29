@@ -25,7 +25,7 @@ I'm going to focus on the steps involved to install on a linux machine using Ana
 package manager. Assuming you have conda installed, create a new conda env
 
 ```
-$ conda create -n diploshic python=3.9 --yes
+$ conda create -n diploshic python=3.10 --yes
 ```
 
 Note that because I'm using the Anaconda version of python, pip will only install this in the anaconda directory
