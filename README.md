@@ -25,7 +25,7 @@ I'm going to focus on the steps involved to install on a linux machine using Ana
 package manager. Assuming you have conda installed, create a new conda env
 
 ```
-$ conda create -n diploshic python=3.9 --yes
+$ conda create -n diploshic python=3.10 --yes
 ```
 
 Note that because I'm using the Anaconda version of python, pip will only install this in the anaconda directory
@@ -49,6 +49,11 @@ You will need to determine if
 you want to use a CPU-only implementation (probably) or a GPU implementation of tensorflow. See
 https://www.tensorflow.org/install/install_linux for install instructions. 
 
+## Mac Installation
+
+1. install new versions of the compilers etc using brew (this seems to be the root of the issue) `brew install gcc gfortran libomp`
+2. set these environment variables export SYSTEM_VERSION_COMPAT=1 \\n && export LDFLAGS="-L/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib"
+build the diploshic packge from the root of the repo dir with pip install .
 
 ## Usage
 The main program that you will interface with is `diploSHIC`. This script is installed by default
