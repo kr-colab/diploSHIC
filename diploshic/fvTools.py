@@ -288,16 +288,22 @@ def polarizeSnps(unmasked, positions, refAlleles, altAlleles, ancArm):
 
     mapping = []
     for i in range(len(ancArm)):
-        if ancArm[i] in "ACGT":
+        if ancArm[i] in "ACGT01":
             if i + 1 in isSnp:
                 ref, alt = refAlleles[isSnp[i + 1]], altAlleles[isSnp[i + 1]]
-                if ancArm[i] == ref:
-                    mapping.append([0, 1])  # no swap
-                elif ancArm[i] == alt:
-                    mapping.append([1, 0])  # swap
+                if ancArm[i] in "ACGT":
+                    if ancArm[i] == ref:
+                        mapping.append([0, 1])  # no swap
+                    elif ancArm[i] == alt:
+                        mapping.append([1, 0])  # swap
+                    else:
+                        mapping.append([0, 1])  # no swap -- failed to polarize
+                        unmasked[i] = False
                 else:
-                    mapping.append([0, 1])  # no swap -- failed to polarize
-                    unmasked[i] = False
+                    if ancArm[i] == '0':
+                        mapping.append([0, 1])  # no swap - '0' represents ancestral
+                    else:  # ancArm[i] == '1'
+                        mapping.append([1, 0])  # swap - '1' represents derived
         elif ancArm[i] == "N":
             unmasked[i] = False
             if i + 1 in isSnp:
@@ -305,7 +311,7 @@ def polarizeSnps(unmasked, positions, refAlleles, altAlleles, ancArm):
         else:
             sys.exit(
                 "Found a character in ancestral chromosome "
-                "that is not 'A', 'C', 'G', 'T' or 'N' (all upper case)!\n"
+                "that is not 'A', 'C', 'G', 'T', '0', '1' or 'N' (all upper case)!\n"
             )
     assert len(mapping) == len(positions)
     return mapping, unmasked
