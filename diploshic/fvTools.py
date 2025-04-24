@@ -1047,8 +1047,8 @@ def calcAndAppendStatValForScanDiplo(
             statVals["diplo_Omega"].append(0.0)
         else:
             r2Matrix = allel.stats.ld.rogers_huff_r(genosNAlt)
-            statVals["diplo_ZnS"].append(np.nanmean(r2Matrix))
             r2Matrix2 = squareform(r2Matrix ** 2)
+            statVals["diplo_ZnS"].append(np.nanmean(r2Matrix))
             statVals["diplo_Omega"].append(dps.omega(r2Matrix2)[0])
     elif statName == "distVar":
         dists = dps.pairwiseDiffsDiplo(genosNAlt) / float(
