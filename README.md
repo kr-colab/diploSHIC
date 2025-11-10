@@ -131,6 +131,14 @@ optional arguments:
                         information (marked by 'N'). If specified, simulations
                         will be masked in a manner mirroring windows drawn
                         from this file.
+  --vcfForMaskFileName VCFFORMASKFILENAME
+                        Path to a VCF file that contains genotype information. This will be used to mask genotypes in a manner that mirrors how the true data are masked.
+  --popForMask POPFORMASK
+                        The label of the population for which we should draw genotype information from the VCF for masking purposes.
+  --sampleToPopFileName SAMPLETOPOPFILENAME
+                        Path to tab delimited file with population assignments (used for genotype masking); format: SampleID popID
+  --unmaskedGenoFracCutoff UNMASKEDGENOFRACCUTOFF
+                        Fraction of unmasked genotypes required to retain a site (default=0.75)
   --chrArmsForMasking CHRARMSFORMASKING
                         A comma-separated list (no spaces) of chromosome arms
                         from which we want to draw masking information (or
