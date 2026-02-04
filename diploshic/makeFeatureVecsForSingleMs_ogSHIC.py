@@ -214,25 +214,22 @@ for instanceIndex in range(numInstances):
             if len(snpIndicesInSubWinUnmasked) > 0:
                 hapsInSubWin = haps.subset(sel0=snpIndicesInSubWinUnmasked)
                 genosInSubWin = genos.subset(sel0=snpIndicesInSubWinUnmasked)
-                for statName in statNames:
-                    fvTools.calcAndAppendStatVal(
-                        alleleCountsUnmaskedOnly,
-                        positionArrayUnmaskedOnly,
-                        statName,
-                        subWinStart,
-                        subWinEnd,
-                        statVals,
-                        instanceIndex,
-                        subWinIndex,
-                        hapsInSubWin,
-                        unmasked,
-                        precomputedStats,
-                    )
+                # Use batched function to compute all stats in one pass
+                fvTools.calcAllStatsForSubWin(
+                    alleleCountsUnmaskedOnly,
+                    positionArrayUnmaskedOnly,
+                    subWinStart,
+                    subWinEnd,
+                    statVals,
+                    instanceIndex,
+                    subWinIndex,
+                    hapsInSubWin,
+                    unmasked,
+                    precomputedStats,
+                )
             else:
-                for statName in statNames:
-                    fvTools.appendStatValsForMonomorphic(
-                        statName, statVals, instanceIndex, subWinIndex
-                    )
+                # Use batched function for monomorphic subwindow
+                fvTools.appendAllStatsForMonomorphic(statVals, instanceIndex)
     numInstancesDone += 1
 
 if numInstancesDone != numInstances:

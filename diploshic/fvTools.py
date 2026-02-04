@@ -4,7 +4,14 @@ import math
 from allel.model.ndarray import SortedIndex
 from allel.util import asarray_ndim
 from scipy.spatial.distance import squareform
-import diploshic.shicstats as dps
+# Import optimized Numba stats (replaces former C extension functions)
+from diploshic.numba_stats import (
+    zns as numba_zns,
+    omega_fast as numba_omega,
+    pairwise_diffs as numba_pairwise_diffs,
+    pairwise_diffs_diplo as numba_pairwise_diffs_diplo,
+    getHaplotypeFreqSpec as numba_getHaplotypeFreqSpec,
+)
 import numpy as np
 import random
 import gzip
@@ -856,6 +863,100 @@ def maxFDA(pos, ac, start=None, stop=None, is_accessible=None):
     return max(dafs)
 
 
+def calcAllStatsForSubWin(
+    alleleCounts,
+    snpLocs,
+    subWinStart,
+    subWinEnd,
+    statVals,
+    instanceIndex,
+    subWinIndex,
+    hapsInSubWin,
+    unmasked,
+    precomputedStats,
+):
+    """
+    Compute all haploid stats for a subwindow in one pass.
+
+    This is an optimized replacement for calling calcAndAppendStatVal once per stat.
+    By computing all stats in a single function call, we eliminate:
+    - 14 of 15 function call overhead
+    - String-based stat dispatch (if/elif chain)
+    - Repeated dictionary lookups
+
+    The stats computed are: pi, thetaW, tajD, thetaH, fayWuH, maxFDA, HapCount,
+    H1, H12, H2/H1, ZnS, Omega, distVar, distSkew, distKurt
+    """
+    # Pre-lookup all storage lists to avoid repeated dict access
+    pi_list = statVals["pi"][instanceIndex]
+    thetaW_list = statVals["thetaW"][instanceIndex]
+    tajD_list = statVals["tajD"][instanceIndex]
+    thetaH_list = statVals["thetaH"][instanceIndex]
+    fayWuH_list = statVals["fayWuH"][instanceIndex]
+    maxFDA_list = statVals["maxFDA"][instanceIndex]
+    HapCount_list = statVals["HapCount"][instanceIndex]
+    H1_list = statVals["H1"][instanceIndex]
+    H12_list = statVals["H12"][instanceIndex]
+    H2H1_list = statVals["H2/H1"][instanceIndex]
+    ZnS_list = statVals["ZnS"][instanceIndex]
+    Omega_list = statVals["Omega"][instanceIndex]
+    distVar_list = statVals["distVar"][instanceIndex]
+    distSkew_list = statVals["distSkew"][instanceIndex]
+    distKurt_list = statVals["distKurt"][instanceIndex]
+
+    # Compute diversity stats
+    pi_val = allel.stats.diversity.sequence_diversity(
+        snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked
+    )
+    pi_list.append(pi_val)
+
+    thetaW_list.append(
+        allel.stats.diversity.watterson_theta(
+            snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked
+        )
+    )
+
+    tajD_list.append(
+        allel.stats.diversity.tajima_d(alleleCounts, pos=snpLocs, start=subWinStart, stop=subWinEnd)
+    )
+
+    thetaH_val = thetah(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked)
+    thetaH_list.append(thetaH_val)
+
+    # fayWuH depends on thetaH and pi
+    fayWuH_list.append(thetaH_val - pi_val)
+
+    # maxFDA
+    maxFDA_list.append(
+        maxFDA(snpLocs, alleleCounts, start=subWinStart, stop=subWinEnd, is_accessible=unmasked)
+    )
+
+    # Haplotype stats
+    HapCount_list.append(len(hapsInSubWin.distinct()))
+
+    # Garud's H stats (computed together)
+    h1, h12, h123, h21 = allel.stats.selection.garud_h(hapsInSubWin)
+    H1_list.append(h1)
+    H12_list.append(h12)
+    H2H1_list.append(h21)
+
+    # LD stats (ZnS and Omega computed together)
+    r2Matrix = fast_r2_matrix_haploid(hapsInSubWin)
+    ZnS_list.append(numba_zns(r2Matrix))
+    Omega_list.append(numba_omega(r2Matrix))
+
+    # Pairwise distance distribution stats (computed together)
+    unmasked_slice = unmasked[subWinStart - 1 : subWinEnd]
+    if hasattr(unmasked_slice, 'count'):
+        n_unmasked = unmasked_slice.count(True)
+    else:
+        n_unmasked = np.sum(unmasked_slice)
+    dists = numba_pairwise_diffs(np.ascontiguousarray(hapsInSubWin)) / float(n_unmasked)
+    distVar_list.append(np.var(dists, ddof=1))
+    distSkew_list.append(scipy.stats.skew(dists))
+    distKurt_list.append(scipy.stats.kurtosis(dists))
+
+
 def calcAndAppendStatVal(
     alleleCounts,
     snpLocs,
@@ -933,8 +1034,8 @@ def calcAndAppendStatVal(
             statVals["H2/H1"][instanceIndex].append(h21)
     elif statName == "ZnS":
         r2Matrix = fast_r2_matrix_haploid(hapsInSubWin)
-        statVals["ZnS"][instanceIndex].append(dps.ZnS(r2Matrix)[0])
-        statVals["Omega"][instanceIndex].append(dps.omega(r2Matrix)[0])
+        statVals["ZnS"][instanceIndex].append(numba_zns(r2Matrix))
+        statVals["Omega"][instanceIndex].append(numba_omega(r2Matrix))
     elif statName == "RH":
         rMatrixFlat = fast_r2_for_ld(
             hapsInSubWin.to_genotypes(ploidy=2).to_n_alt()
@@ -942,7 +1043,7 @@ def calcAndAppendStatVal(
         rhAvg = rMatrixFlat.mean()
         statVals["RH"][instanceIndex].append(rhAvg)
         r2Matrix = squareform(rMatrixFlat ** 2)
-        statVals["Omega"][instanceIndex].append(dps.omega(r2Matrix)[0])
+        statVals["Omega"][instanceIndex].append(numba_omega(r2Matrix))
     elif statName == "iHSMean":
         vals = [
             x
@@ -1004,7 +1105,7 @@ def calcAndAppendStatVal(
             n_unmasked = unmasked_slice.count(True)
         else:
             n_unmasked = np.sum(unmasked_slice)
-        dists = dps.pairwiseDiffs(hapsInSubWin) / float(n_unmasked)
+        dists = numba_pairwise_diffs(np.ascontiguousarray(hapsInSubWin)) / float(n_unmasked)
         statVals["distVar"][instanceIndex].append(np.var(dists, ddof=1))
         statVals["distSkew"][instanceIndex].append(scipy.stats.skew(dists))
         statVals["distKurt"][instanceIndex].append(scipy.stats.kurtosis(dists))
@@ -1079,7 +1180,7 @@ def calcAndAppendStatValDiplo(
     elif statName == "HapCount":
         statVals[statName][instanceIndex].append(len(genosInSubWin.distinct()))
     elif statName == "nDiplos":
-        diplotypeCounts = dps.getHaplotypeFreqSpec(genosNAlt)
+        diplotypeCounts = numba_getHaplotypeFreqSpec(genosNAlt)
         nDiplos = diplotypeCounts[genosNAlt.shape[1]]
         statVals["nDiplos"][instanceIndex].append(nDiplos)
         diplotypeCounts = diplotypeCounts[:-1]
@@ -1101,7 +1202,7 @@ def calcAndAppendStatValDiplo(
             r2Matrix2 = squareform(r2Matrix ** 2)
             statVals["diplo_ZnS"][instanceIndex].append(np.nanmean(r2Matrix2))
             statVals["diplo_Omega"][instanceIndex].append(
-                dps.omega(r2Matrix2)[0]
+                numba_omega(r2Matrix2)
             )
     elif statName == "distVar":
         # Support both list and numpy array for unmasked
@@ -1110,7 +1211,7 @@ def calcAndAppendStatValDiplo(
             n_unmasked = unmasked_slice.count(True)
         else:
             n_unmasked = np.sum(unmasked_slice)
-        dists = dps.pairwiseDiffsDiplo(genosNAlt) / float(n_unmasked)
+        dists = numba_pairwise_diffs_diplo(np.ascontiguousarray(genosNAlt)) / float(n_unmasked)
         statVals["distVar"][instanceIndex].append(np.var(dists, ddof=1))
         statVals["distSkew"][instanceIndex].append(scipy.stats.skew(dists))
         statVals["distKurt"][instanceIndex].append(scipy.stats.kurtosis(dists))
@@ -1190,7 +1291,7 @@ def calcAndAppendStatValForScanDiplo(
         # AK: undefined variables
         statVals[statName].append(len(genosInSubWin.distinct()))
     elif statName == "nDiplos":
-        diplotypeCounts = dps.getHaplotypeFreqSpec(genosNAlt)
+        diplotypeCounts = numba_getHaplotypeFreqSpec(genosNAlt)
         nDiplos = diplotypeCounts[genosNAlt.shape[1]]
         statVals["nDiplos"].append(nDiplos)
         diplotypeCounts = diplotypeCounts[:-1]
@@ -1211,7 +1312,7 @@ def calcAndAppendStatValForScanDiplo(
             r2Matrix = fast_r2_for_ld(genosNAlt)
             r2Matrix2 = squareform(r2Matrix ** 2)
             statVals["diplo_ZnS"].append(np.nanmean(r2Matrix))
-            statVals["diplo_Omega"].append(dps.omega(r2Matrix2)[0])
+            statVals["diplo_Omega"].append(numba_omega(r2Matrix2))
     elif statName == "distVar":
         # Support both list and numpy array for unmasked
         unmasked_slice = unmasked[subWinStart - 1 : subWinEnd]
@@ -1219,7 +1320,7 @@ def calcAndAppendStatValForScanDiplo(
             n_unmasked = unmasked_slice.count(True)
         else:
             n_unmasked = np.sum(unmasked_slice)
-        dists = dps.pairwiseDiffsDiplo(genosNAlt) / float(n_unmasked)
+        dists = numba_pairwise_diffs_diplo(np.ascontiguousarray(genosNAlt)) / float(n_unmasked)
         statVals["distVar"].append(np.var(dists, ddof=1))
         statVals["distSkew"].append(scipy.stats.skew(dists))
         statVals["distKurt"].append(scipy.stats.kurtosis(dists))
@@ -1253,6 +1354,29 @@ def getOutlierFrac(vals, cutoff=2.0):
             return 0.0
         else:
             return num / float(denom)
+
+
+def appendAllStatsForMonomorphic(statVals, instanceIndex):
+    """
+    Append values for all haploid stats when a subwindow has no SNPs.
+
+    This is an optimized batched version of appendStatValsForMonomorphic.
+    """
+    statVals["pi"][instanceIndex].append(0.0)
+    statVals["thetaW"][instanceIndex].append(0.0)
+    statVals["tajD"][instanceIndex].append(0.0)
+    statVals["thetaH"][instanceIndex].append(0.0)
+    statVals["fayWuH"][instanceIndex].append(0.0)
+    statVals["maxFDA"][instanceIndex].append(0.0)
+    statVals["HapCount"][instanceIndex].append(1)
+    statVals["H1"][instanceIndex].append(1.0)
+    statVals["H12"][instanceIndex].append(1.0)
+    statVals["H2/H1"][instanceIndex].append(0.0)
+    statVals["ZnS"][instanceIndex].append(0.0)
+    statVals["Omega"][instanceIndex].append(0.0)
+    statVals["distVar"][instanceIndex].append(0.0)
+    statVals["distSkew"][instanceIndex].append(0.0)
+    statVals["distKurt"][instanceIndex].append(0.0)
 
 
 def appendStatValsForMonomorphic(
@@ -1399,8 +1523,8 @@ def calcAndAppendStatValForScan(
             statVals["H2/H1"].append(h21)
     elif statName == "ZnS":
         r2Matrix = fast_r2_matrix_haploid(hapsInSubWin)
-        statVals["ZnS"].append(dps.ZnS(r2Matrix)[0])
-        statVals["Omega"].append(dps.omega(r2Matrix)[0])
+        statVals["ZnS"].append(numba_zns(r2Matrix))
+        statVals["Omega"].append(numba_omega(r2Matrix))
     elif statName == "RH":
         rMatrixFlat = fast_r2_for_ld(
             hapsInSubWin.to_genotypes(ploidy=2).to_n_alt()
@@ -1408,7 +1532,7 @@ def calcAndAppendStatValForScan(
         rhAvg = rMatrixFlat.mean()
         statVals["RH"].append(rhAvg)
         r2Matrix = squareform(rMatrixFlat ** 2)
-        statVals["Omega"].append(dps.omega(r2Matrix)[0])
+        statVals["Omega"].append(numba_omega(r2Matrix))
     elif statName == "iHSMean":
         vals = [
             x
@@ -1466,7 +1590,7 @@ def calcAndAppendStatValForScan(
             n_unmasked = unmasked_slice.count(True)
         else:
             n_unmasked = np.sum(unmasked_slice)
-        dists = dps.pairwiseDiffs(hapsInSubWin) / float(n_unmasked)
+        dists = numba_pairwise_diffs(np.ascontiguousarray(hapsInSubWin)) / float(n_unmasked)
         statVals["distVar"].append(np.var(dists, ddof=1))
         statVals["distSkew"].append(scipy.stats.skew(dists))
         statVals["distKurt"].append(scipy.stats.kurtosis(dists))
