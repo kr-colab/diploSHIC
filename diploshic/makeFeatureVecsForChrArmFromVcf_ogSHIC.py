@@ -61,8 +61,8 @@ def getSubWinBounds(chrLen, subWinSize):
     return subWinBounds
 
 
-def getSnpIndicesInSubWins(subWinSize, lastSubWinEnd, snpLocs):
-    subWinStart = 1
+def getSnpIndicesInSubWins(subWinSize, lastSubWinEnd, snpLocs, firstSubWinStart=1):
+    subWinStart = firstSubWinStart
     subWinEnd = subWinStart + subWinSize - 1
     snpIndicesInSubWins = [[]]
     for i in range(len(snpLocs)):
@@ -217,16 +217,26 @@ for statName in statNames:
 
 startTime = time.perf_counter()
 goodSubWins = []
-lastSubWinEnd = chrLen - chrLen % subWinSize
+
+# Determine iteration bounds based on segment (if specified)
+if segmentStart is not None:
+    # Align firstSubWinStart to subWinSize boundary at or after segmentStart
+    firstSubWinStart = ((segmentStart - 1) // subWinSize) * subWinSize + 1
+    # Align lastSubWinEnd to subWinSize boundary at or before segmentEnd
+    lastSubWinEnd = (segmentEnd // subWinSize) * subWinSize
+else:
+    firstSubWinStart = 1
+    lastSubWinEnd = chrLen - chrLen % subWinSize
+
 snpIndicesInSubWins = getSnpIndicesInSubWins(
-    subWinSize, lastSubWinEnd, positions
+    subWinSize, lastSubWinEnd, positions, firstSubWinStart
 )
 subWinIndex = 0
 lastSubWinStart = lastSubWinEnd - subWinSize + 1
 if statFileName:
     statFile = open(statFileName, "w")
     statFile.write(statHeader + "\n")
-for subWinStart in range(1, lastSubWinStart + 1, subWinSize):
+for subWinStart in range(firstSubWinStart, lastSubWinStart + 1, subWinSize):
     subWinEnd = subWinStart + subWinSize - 1
     unmaskedFrac = unmasked[subWinStart - 1 : subWinEnd].count(True) / float(
         subWinEnd - subWinStart + 1
