@@ -7,7 +7,7 @@ from scipy.spatial.distance import squareform
 # Import optimized Numba stats (replaces former C extension functions)
 from diploshic.numba_stats import (
     zns as numba_zns,
-    omega_fast as numba_omega,
+    omega as numba_omega,
     pairwise_diffs as numba_pairwise_diffs,
     pairwise_diffs_diplo as numba_pairwise_diffs_diplo,
     getHaplotypeFreqSpec as numba_getHaplotypeFreqSpec,
@@ -18,129 +18,77 @@ import gzip
 import scipy.stats
 
 
-def fast_r2_for_ld(gn):
+def _normalize_genotypes(gn):
     """
-    Compute R (correlation) matrix using BLAS-optimized matrix multiplication.
+    Center and normalize genotype matrix for correlation computation.
 
-    This is a fast replacement for allel.stats.ld.rogers_huff_r that uses
-    numpy's BLAS-optimized matrix multiplication instead of nested loops.
-    Provides 5-10x speedup while maintaining numerical accuracy.
-
-    Parameters
-    ----------
-    gn : array-like, shape (n_snps, n_samples)
-        Genotype values (0, 1, or 2 for diploid; 0 or 1 for haploid)
-
-    Returns
-    -------
-    r_flat : ndarray, shape (n_snps * (n_snps - 1) / 2,)
-        R (correlation) values in condensed form (same as allel.rogers_huff_r output)
+    Returns normalized matrix and monomorphic site mask.
     """
     gn = np.asarray(gn, dtype=np.float64)
     n_snps, n_samples = gn.shape
 
-    if n_snps <= 1:
-        return np.array([], dtype=np.float64)
-
-    # Center and normalize
     means = gn.mean(axis=1, keepdims=True)
     gn_centered = gn - means
     std = gn_centered.std(axis=1, keepdims=True, ddof=0)
 
     # Handle zero variance (monomorphic sites)
+    mono_mask = (std.flatten() == 0)
     std_safe = np.where(std == 0, 1, std)
     gn_norm = gn_centered / std_safe
 
-    # Compute correlation matrix via BLAS matmul
-    r = (gn_norm @ gn_norm.T) / n_samples
+    return gn_norm, mono_mask, n_samples
 
-    # Zero out rows/cols for monomorphic sites
-    mono_mask = (std.flatten() == 0)
+
+def fast_r2_for_ld(gn):
+    """
+    Compute R (correlation) in condensed form using BLAS matrix multiplication.
+
+    Fast replacement for allel.stats.ld.rogers_huff_r (5-10x speedup).
+    """
+    gn = np.asarray(gn, dtype=np.float64)
+    if gn.shape[0] <= 1:
+        return np.array([], dtype=np.float64)
+
+    gn_norm, mono_mask, n_samples = _normalize_genotypes(gn)
+
+    # Correlation matrix via BLAS matmul
+    r = (gn_norm @ gn_norm.T) / n_samples
     r[mono_mask, :] = 0
     r[:, mono_mask] = 0
 
-    # Extract upper triangle (condensed form like squareform expects)
-    r_flat = squareform(r, checks=False)
-
-    return r_flat
+    return squareform(r, checks=False)
 
 
 def fast_r2_matrix_diploid(gn):
     """
-    Compute R² (squared correlation) matrix for diploid data.
+    Compute R² matrix for diploid data using BLAS matrix multiplication.
 
-    Returns the full symmetric R² matrix directly, avoiding intermediate
-    condensed form conversion. This is faster when you need the full matrix
-    for further computation (e.g., ZnS, Omega statistics).
-
-    Parameters
-    ----------
-    gn : array-like, shape (n_snps, n_samples)
-        Genotype values (0, 1, or 2)
-
-    Returns
-    -------
-    r2_matrix : ndarray, shape (n_snps, n_snps)
-        Symmetric R² matrix with diagonal set to 0
+    Returns full symmetric R² matrix with diagonal zeroed.
+    Faster than condensed form when you need the full matrix for ZnS/Omega.
     """
     gn = np.asarray(gn, dtype=np.float64)
-    n_snps, n_samples = gn.shape
-
+    n_snps = gn.shape[0]
     if n_snps <= 1:
         return np.zeros((n_snps, n_snps), dtype=np.float64)
 
-    # Center and normalize
-    means = gn.mean(axis=1, keepdims=True)
-    gn_centered = gn - means
-    std = gn_centered.std(axis=1, keepdims=True, ddof=0)
+    gn_norm, mono_mask, n_samples = _normalize_genotypes(gn)
 
-    # Handle zero variance (monomorphic sites)
-    std_safe = np.where(std == 0, 1, std)
-    gn_norm = gn_centered / std_safe
-
-    # Compute correlation matrix via BLAS matmul
+    # Correlation matrix via BLAS matmul
     r = (gn_norm @ gn_norm.T) / n_samples
-
-    # Zero out rows/cols for monomorphic sites
-    mono_mask = (std.flatten() == 0)
     r[mono_mask, :] = 0
     r[:, mono_mask] = 0
 
-    # Square to get R² and zero diagonal
     r2 = r ** 2
     np.fill_diagonal(r2, 0)
-
     return r2
 
 
 def fast_r2_matrix_haploid(haps):
     """
-    Compute R² matrix for haploid data using BLAS-optimized matrix multiplication.
+    Compute R² matrix for haploid data using BLAS matrix multiplication.
 
-    This is a fast replacement for dps.computeR2Matrix that provides 10-50x speedup
-    while correctly handling missing data per-pair using vectorized operations.
-
-    For binary haplotype data (0/1), we compute R² using the formula:
-        R² = Cov(X_i, X_j)² / (Var(X_i) * Var(X_j))
-    where statistics are computed only over jointly valid samples for each pair.
-
-    The key insight is that all necessary sums can be computed via matrix multiplication:
-        - V = validity indicator (1 if valid, 0 if missing)
-        - M = masked values (X if valid, 0 if missing)
-        - n_ij = (V @ V.T)[i,j] = count of jointly valid samples
-        - S_i_given_j = (M @ V.T)[i,j] = sum of X_i over jointly valid samples
-        - SS_ij = (M @ M.T)[i,j] = sum of X_i * X_j over jointly valid samples
-
-    Parameters
-    ----------
-    haps : array-like, shape (n_snps, n_haplotypes)
-        Haplotype values (0, 1, or -1 for missing)
-
-    Returns
-    -------
-    r2_matrix : ndarray, shape (n_snps, n_snps)
-        R² matrix with upper triangle filled (compatible with dps.ZnS and dps.omega).
-        Pairs involving monomorphic sites or insufficient samples are set to -1.0.
+    Handles missing data (-1) by computing per-pair statistics over jointly
+    valid samples. Returns upper-triangular matrix with -1 for invalid pairs.
     """
     haps_arr = np.asarray(haps)
     n_snps, n_samples = haps_arr.shape
@@ -148,82 +96,41 @@ def fast_r2_matrix_haploid(haps):
     if n_snps <= 1:
         return np.zeros((n_snps, n_snps), dtype=np.float64)
 
-    # Check for missing data
     has_missing = np.any(haps_arr < 0)
 
     if not has_missing:
-        # Fast path: no missing data - simple BLAS approach
-        # Use std directly (avoids computing var then sqrt)
-        haps_float = haps_arr.astype(np.float64)
-        means = haps_float.mean(axis=1, keepdims=True)
-        haps_centered = haps_float - means
-        std = haps_centered.std(axis=1, keepdims=True, ddof=0)
-
-        mono_mask = (std.flatten() == 0)
-        std_safe = np.where(std == 0, 1, std)
-        haps_norm = haps_centered / std_safe
-
+        # Fast path: use standard correlation approach
+        haps_norm, mono_mask, n_samples = _normalize_genotypes(haps_arr)
         r = (haps_norm @ haps_norm.T) / n_samples
-        r2 = r ** 2
-        r2 = np.triu(r2, k=1)
-
-        # Mark monomorphic site pairs as invalid
+        r2 = np.triu(r ** 2, k=1)
         r2[mono_mask, :] = -1.0
         r2[:, mono_mask] = -1.0
         return r2
 
-    # Missing data path: vectorized computation with per-pair sample counts
-    # V[i,k] = 1 if haps[i,k] >= 0, else 0 (validity indicator)
-    # M[i,k] = haps[i,k] if valid, else 0 (masked values)
+    # Missing data path: compute per-pair statistics via matrix operations
+    # V = validity mask, M = masked values (0 where missing)
     V = (haps_arr >= 0).astype(np.float64)
     M = np.where(haps_arr >= 0, haps_arr, 0).astype(np.float64)
 
-    # Compute via BLAS matrix multiplication:
-    # n[i,j] = sum_k V[i,k] * V[j,k] = count of jointly valid samples
-    # S1[i,j] = sum_k M[i,k] * V[j,k] = sum of X_i over jointly valid samples for pair (i,j)
-    # SS[i,j] = sum_k M[i,k] * M[j,k] = sum of X_i * X_j over jointly valid samples
-    n = V @ V.T
-    S1 = M @ V.T  # S1[i,j] = sum of X_i when both i,j valid
-    SS = M @ M.T  # SS[i,j] = sum of X_i * X_j when both valid
+    # Compute sums over jointly valid samples via BLAS matmul
+    n = V @ V.T                    # n[i,j] = count of jointly valid samples
+    S1 = M @ V.T                   # S1[i,j] = sum of SNP i over valid pairs
+    S2 = S1.T                      # S2[i,j] = sum of SNP j over valid pairs
+    SS = M @ M.T                   # SS[i,j] = sum of products
 
-    # Note: S2[i,j] = sum of X_j when both valid = S1[j,i] = S1.T[i,j]
-    S2 = S1.T
-
-    # For binary data X in {0,1}: X² = X, so sum(X²) = sum(X)
-    # Mean of X_i over jointly valid samples: mean_i = S1 / n
-    # Variance of X_i over jointly valid samples: var_i = mean_i * (1 - mean_i)
-    #   (using property of Bernoulli: var = p(1-p))
-
-    # Covariance: cov = E[XY] - E[X]E[Y] = SS/n - (S1/n)(S2/n) = (SS*n - S1*S2) / n²
-    # R² = cov² / (var_i * var_j)
-    #    = (SS*n - S1*S2)² / n⁴ / (S1/n * (1-S1/n) * S2/n * (1-S2/n))
-    #    = (SS*n - S1*S2)² / (S1*(n-S1) * S2*(n-S2))
-
-    # Compute numerator and denominator
-    # Numerator: (SS * n - S1 * S2)²
-    cov_num = SS * n - S1 * S2  # Covariance * n² (scaled)
-    numerator = cov_num ** 2
-
-    # Denominator: S1*(n-S1) * S2*(n-S2)
-    # This equals n² * var_i * n² * var_j = n⁴ * var_i * var_j
-    var_i_scaled = S1 * (n - S1)  # = n² * var_i
-    var_j_scaled = S2 * (n - S2)  # = n² * var_j
+    # R² = (cov)² / (var_i * var_j), using Bernoulli variance formula
+    # Scaled to avoid divisions: R² = (SS*n - S1*S2)² / (S1*(n-S1) * S2*(n-S2))
+    cov_scaled = SS * n - S1 * S2
+    var_i_scaled = S1 * (n - S1)
+    var_j_scaled = S2 * (n - S2)
     denominator = var_i_scaled * var_j_scaled
 
-    # Compute R² with protection against division by zero
-    # Invalid cases: n < 2 (not enough samples), or either variance = 0 (monomorphic)
     valid_mask = (n >= 2) & (var_i_scaled > 0) & (var_j_scaled > 0)
 
-    r2 = np.zeros((n_snps, n_snps), dtype=np.float64)
-    r2[valid_mask] = numerator[valid_mask] / denominator[valid_mask]
+    r2 = np.full((n_snps, n_snps), -1.0, dtype=np.float64)
+    r2[valid_mask] = (cov_scaled[valid_mask] ** 2) / denominator[valid_mask]
 
-    # Set invalid pairs to -1.0 (filtered by ZnS/omega)
-    r2[~valid_mask] = -1.0
-
-    # Zero out diagonal and lower triangle (match C extension format)
-    r2 = np.triu(r2, k=1)
-
-    return r2
+    return np.triu(r2, k=1)
 
 
 def misPolarizeAlleleCounts(ac, pMisPol):

@@ -105,63 +105,12 @@ def zns(r2_matrix):
 
 
 @njit(cache=True)
-def omega_naive(r2_matrix):
-    """Naive O(n³) omega for correctness verification."""
-    n_snps = r2_matrix.shape[0]
-
-    if n_snps < 5:
-        return 0.0
-
-    omega_max = 0.0
-
-    for l in range(3, n_snps - 2):
-        cross_sum = 0.0
-        cross_count = 0
-        left_sum = 0.0
-        left_count = 0
-        right_sum = 0.0
-        right_count = 0
-
-        for i in range(n_snps - 1):
-            for j in range(i + 1, n_snps):
-                val = r2_matrix[i, j]
-                if val >= 0.0:
-                    if i < l and j >= l:
-                        cross_sum += val
-                        cross_count += 1
-                    elif i < l and j < l:
-                        left_sum += val
-                        left_count += 1
-                    elif i >= l and j >= l:
-                        right_sum += val
-                        right_count += 1
-
-        if cross_count > 0 and (left_count + right_count) > 0:
-            mean_cross = cross_sum / cross_count
-            if mean_cross > 0:
-                mean_within = (left_sum + right_sum) / (left_count + right_count)
-                omega_val = mean_within / mean_cross
-                if omega_val > omega_max:
-                    omega_max = omega_val
-
-    return omega_max
-
-
-@njit(cache=True)
-def omega_fast(r2_matrix):
+def omega(r2_matrix):
     """
-    Compute omega statistic using O(n²) algorithm with incremental updates.
+    Compute omega statistic (max within/cross partition LD ratio).
 
-    For partition at position l:
-    - Left pairs: i < l and j < l (since i<j always, this means j < l)
-    - Right pairs: i >= l and j >= l (since i<j always, this means i >= l)
-    - Cross pairs: i < l and j >= l
-
-    omega(l) = mean(left + right) / mean(cross)
-
-    As l increases from l to l+1:
-    - Pairs (i, l) where i < l move from CROSS to LEFT
-    - Pairs (l, j) where j > l move from RIGHT to CROSS
+    Uses O(n²) incremental algorithm instead of naive O(n³).
+    omega(l) = mean_within_partition_R² / mean_cross_partition_R²
     """
     n_snps = r2_matrix.shape[0]
 
@@ -227,47 +176,12 @@ def omega_fast(r2_matrix):
     return omega_max
 
 
-@njit(cache=True)
-def omega(r2_matrix):
-    """
-    Compute omega statistic (max ratio of within-partition to cross-partition LD).
-
-    This uses an O(n²) algorithm instead of the naive O(n³) approach.
-
-    Parameters
-    ----------
-    r2_matrix : ndarray, shape (n_snps, n_snps)
-        Upper triangular R² matrix
-
-    Returns
-    -------
-    omega_max : float
-        Maximum omega value across all partition points
-    """
-    return omega_fast(r2_matrix)
-
-
 def pairwise_diffs(haps):
     """
-    Compute pairwise differences between all sample pairs.
+    Compute pairwise Hamming distances between all sample pairs.
 
-    Uses BLAS-optimized matrix operations for O(samples² × SNPs) performance.
-
-    For binary haplotype data (0/1), the Hamming distance between samples i and j is:
-        diff(i,j) = sum(h[:,i] XOR h[:,j])
-                  = sum(h[:,i]) + sum(h[:,j]) - 2*sum(h[:,i] * h[:,j])
-
-    With missing data (values < 0), we mask invalid positions.
-
-    Parameters
-    ----------
-    haps : ndarray, shape (n_snps, n_samples)
-        Haplotype matrix with values 0, 1, or -1 (missing)
-
-    Returns
-    -------
-    diffs : ndarray, shape (n_samples * (n_samples - 1) // 2,)
-        Pairwise difference counts
+    Uses BLAS matrix operations: diff(i,j) = sum(h[:,i]) + sum(h[:,j]) - 2*h[:,i]·h[:,j]
+    Handles missing data (-1) by computing over jointly valid positions.
     """
     haps_arr = np.asarray(haps, dtype=np.float64)
     n_snps, n_samps = haps_arr.shape
@@ -298,23 +212,10 @@ def pairwise_diffs(haps):
 
 def pairwise_diffs_diplo(genos):
     """
-    Compute pairwise differences for diploid genotypes.
+    Compute pairwise differences for diploid genotypes (0, 1, 2).
 
-    For diploid data (0, 1, 2), counts positions where genotypes differ.
-    Uses BLAS-optimized matrix operations.
-
-    Approach: diff = n_valid - matches
-    where matches = positions where g[:,i] == g[:,j] AND both valid
-
-    Parameters
-    ----------
-    genos : ndarray, shape (n_snps, n_samples)
-        Genotype matrix with values 0, 1, 2, or -1 (missing)
-
-    Returns
-    -------
-    diffs : ndarray, shape (n_samples * (n_samples - 1) // 2,)
-        Pairwise difference counts
+    Uses BLAS matrix operations with indicator matrices for each genotype value.
+    Counts positions where genotypes differ; handles missing data (-1).
     """
     genos_arr = np.asarray(genos, dtype=np.float64)
     n_snps, n_samps = genos_arr.shape
