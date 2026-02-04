@@ -1,5 +1,3 @@
-include diploshic/shicstats.pyf
 include diploshic/testEmpirical.fvec
 include diploshic/testing/*
 include diploshic/training/*
-include diploshic/utils.c

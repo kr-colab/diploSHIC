@@ -9,51 +9,38 @@ using simulation. 2) `diploS/HIC` training and performance evaluation. 3) Calcul
 genetic simulations must be performed using separate software such as discoal (https://github.com/kern-lab/discoal) 
 
 ## Installation
-`diploS/HIC` has a number of dependencies that should be straightforward to install using python package managers
-such as `conda` or `pip`. The complete list of dependencies looks like this:
 
-- numpy
-- scipy
-- pandas
-- scikit-allel
-- scikit-learn
-- tensorflow
-- keras
+`diploS/HIC` requires Python 3.10+ and has the following main dependencies:
 
-## Install on linux
-I'm going to focus on the steps involved to install on a linux machine using Anaconda as our python source / main
-package manager. Assuming you have conda installed, create a new conda env
+- numpy, scipy, pandas
+- scikit-allel, scikit-learn
+- tensorflow, keras
+- numba
 
-```
-$ conda create -n diploshic python=3.10 --yes
-```
+### Install from PyPI (recommended)
 
-Note that because I'm using the Anaconda version of python, pip will only install this in the anaconda directory
-which is a good thing. Now we are ready to install `diploS/HIC` itself. We recommend using the binarys that
-we have packaged using pip. Simply type
-
-```
+```bash
 pip install diploshic
 ```
 
-or if you prefer you can clone and build the repo yourself
+Or using [uv](https://docs.astral.sh/uv/):
 
-```
-$ git clone https://github.com/kern-lab/diploSHIC.git
-$ cd diploSHIC 
-$ pip install .
+```bash
+uv pip install diploshic
 ```
 
-This should automatically install all the dependencies including tensorflow.
-You will need to determine if 
-you want to use a CPU-only implementation (probably) or a GPU implementation of tensorflow. See
-https://www.tensorflow.org/install/install_linux for install instructions. 
+### Install from source
 
-## Mac Installation
+```bash
+git clone https://github.com/kr-colab/diploSHIC.git
+cd diploSHIC
+pip install .
+```
 
-1. install new versions of the compilers etc using brew (this seems to be the root of the issue) `brew install gcc gfortran libomp`
-2. set these environment variables export SYSTEM_VERSION_COMPAT=1 \\n && export LDFLAGS="-L/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib"
-build the diploshic packge from the root of the repo dir with pip install .
+### GPU support
+
+By default, TensorFlow installs with CPU support. For GPU acceleration, see
+the [TensorFlow GPU installation guide](https://www.tensorflow.org/install/gpu)
 
 ## Usage
 The main program that you will interface with is `diploSHIC`. This script is installed by default
