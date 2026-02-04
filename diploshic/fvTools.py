@@ -65,6 +65,54 @@ def fast_r2_for_ld(gn):
     return r_flat
 
 
+def fast_r2_matrix_diploid(gn):
+    """
+    Compute R² (squared correlation) matrix for diploid data.
+
+    Returns the full symmetric R² matrix directly, avoiding intermediate
+    condensed form conversion. This is faster when you need the full matrix
+    for further computation (e.g., ZnS, Omega statistics).
+
+    Parameters
+    ----------
+    gn : array-like, shape (n_snps, n_samples)
+        Genotype values (0, 1, or 2)
+
+    Returns
+    -------
+    r2_matrix : ndarray, shape (n_snps, n_snps)
+        Symmetric R² matrix with diagonal set to 0
+    """
+    gn = np.asarray(gn, dtype=np.float64)
+    n_snps, n_samples = gn.shape
+
+    if n_snps <= 1:
+        return np.zeros((n_snps, n_snps), dtype=np.float64)
+
+    # Center and normalize
+    means = gn.mean(axis=1, keepdims=True)
+    gn_centered = gn - means
+    std = gn_centered.std(axis=1, keepdims=True, ddof=0)
+
+    # Handle zero variance (monomorphic sites)
+    std_safe = np.where(std == 0, 1, std)
+    gn_norm = gn_centered / std_safe
+
+    # Compute correlation matrix via BLAS matmul
+    r = (gn_norm @ gn_norm.T) / n_samples
+
+    # Zero out rows/cols for monomorphic sites
+    mono_mask = (std.flatten() == 0)
+    r[mono_mask, :] = 0
+    r[:, mono_mask] = 0
+
+    # Square to get R² and zero diagonal
+    r2 = r ** 2
+    np.fill_diagonal(r2, 0)
+
+    return r2
+
+
 def fast_r2_matrix_haploid(haps):
     """
     Compute R² matrix for haploid data using BLAS-optimized matrix multiplication.
@@ -1198,11 +1246,10 @@ def calcAndAppendStatValDiplo(
             statVals["diplo_ZnS"][instanceIndex].append(0.0)
             statVals["diplo_Omega"][instanceIndex].append(0.0)
         else:
-            r2Matrix = fast_r2_for_ld(genosNAlt)
-            r2Matrix2 = squareform(r2Matrix ** 2)
-            statVals["diplo_ZnS"][instanceIndex].append(np.nanmean(r2Matrix2))
+            r2Matrix = fast_r2_matrix_diploid(genosNAlt)
+            statVals["diplo_ZnS"][instanceIndex].append(np.nanmean(r2Matrix))
             statVals["diplo_Omega"][instanceIndex].append(
-                numba_omega(r2Matrix2)
+                numba_omega(r2Matrix)
             )
     elif statName == "distVar":
         # Support both list and numpy array for unmasked
