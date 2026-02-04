@@ -247,45 +247,64 @@ def omega(r2_matrix):
     return omega_fast(r2_matrix)
 
 
-@njit(parallel=True, cache=True)
 def pairwise_diffs(haps):
     """
     Compute pairwise differences between all sample pairs.
 
+    Uses BLAS-optimized matrix operations for O(samples² × SNPs) performance.
+
+    For binary haplotype data (0/1), the Hamming distance between samples i and j is:
+        diff(i,j) = sum(h[:,i] XOR h[:,j])
+                  = sum(h[:,i]) + sum(h[:,j]) - 2*sum(h[:,i] * h[:,j])
+
+    With missing data (values < 0), we mask invalid positions.
+
     Parameters
     ----------
     haps : ndarray, shape (n_snps, n_samples)
-        Haplotype matrix
+        Haplotype matrix with values 0, 1, or -1 (missing)
 
     Returns
     -------
     diffs : ndarray, shape (n_samples * (n_samples - 1) // 2,)
         Pairwise difference counts
     """
-    n_snps, n_samps = haps.shape
-    n_pairs = n_samps * (n_samps - 1) // 2
-    diffs = np.zeros(n_pairs, dtype=np.float64)
+    haps_arr = np.asarray(haps, dtype=np.float64)
+    n_snps, n_samps = haps_arr.shape
 
-    pair_idx = 0
-    for i in range(n_samps - 1):
-        for j in range(i + 1, n_samps):
-            diff_count = 0
-            for k in range(n_snps):
-                hi = haps[k, i]
-                hj = haps[k, j]
-                if 0 <= hi <= 1 and 0 <= hj <= 1:
-                    if hi != hj:
-                        diff_count += 1
-            diffs[pair_idx] = diff_count
-            pair_idx += 1
+    # Check for missing data
+    has_missing = np.any(haps_arr < 0)
 
-    return diffs
+    if not has_missing:
+        # Fast path: no missing data, use simple BLAS operations
+        col_sums = haps_arr.sum(axis=0)
+        gram = haps_arr.T @ haps_arr
+        diff_matrix = col_sums[:, None] + col_sums[None, :] - 2 * gram
+    else:
+        # Missing data path: use validity masks
+        V = (haps_arr >= 0).astype(np.float64)  # Validity mask
+        M = np.where(haps_arr >= 0, haps_arr, 0).astype(np.float64)  # Masked values
+
+        # S[i,j] = sum of sample i's values at positions where both i,j are valid
+        S = M.T @ V
+        gram = M.T @ M
+
+        # Differences: S[i,j] + S[j,i] - 2*gram[i,j]
+        diff_matrix = S + S.T - 2 * gram
+
+    # Extract upper triangle as flat array
+    return diff_matrix[np.triu_indices(n_samps, k=1)]
 
 
-@njit(parallel=True, cache=True)
 def pairwise_diffs_diplo(genos):
     """
     Compute pairwise differences for diploid genotypes.
+
+    For diploid data (0, 1, 2), counts positions where genotypes differ.
+    Uses BLAS-optimized matrix operations.
+
+    Approach: diff = n_valid - matches
+    where matches = positions where g[:,i] == g[:,j] AND both valid
 
     Parameters
     ----------
@@ -297,24 +316,34 @@ def pairwise_diffs_diplo(genos):
     diffs : ndarray, shape (n_samples * (n_samples - 1) // 2,)
         Pairwise difference counts
     """
-    n_snps, n_samps = genos.shape
-    n_pairs = n_samps * (n_samps - 1) // 2
-    diffs = np.zeros(n_pairs, dtype=np.float64)
+    genos_arr = np.asarray(genos, dtype=np.float64)
+    n_snps, n_samps = genos_arr.shape
 
-    pair_idx = 0
-    for i in range(n_samps - 1):
-        for j in range(i + 1, n_samps):
-            diff_count = 0
-            for k in range(n_snps):
-                gi = genos[k, i]
-                gj = genos[k, j]
-                if 0 <= gi <= 2 and 0 <= gj <= 2:
-                    if gi != gj:
-                        diff_count += 1
-            diffs[pair_idx] = diff_count
-            pair_idx += 1
+    # Check for missing/invalid data
+    has_missing = np.any((genos_arr < 0) | (genos_arr > 2))
 
-    return diffs
+    if not has_missing:
+        # Fast path: no validity tracking needed (3 matmuls instead of 4)
+        I0 = (genos_arr == 0).astype(np.float64)
+        I1 = (genos_arr == 1).astype(np.float64)
+        I2 = (genos_arr == 2).astype(np.float64)
+        matches = I0.T @ I0 + I1.T @ I1 + I2.T @ I2
+        diff_matrix = n_snps - matches
+    else:
+        # Missing data path: need validity masks
+        V = ((genos_arr >= 0) & (genos_arr <= 2)).astype(np.float64)
+        n_valid = V.T @ V
+
+        # Create indicator matrices for each genotype value (masked by validity)
+        I0 = ((genos_arr == 0) & (genos_arr >= 0)).astype(np.float64)
+        I1 = ((genos_arr == 1) & (genos_arr >= 0)).astype(np.float64)
+        I2 = ((genos_arr == 2) & (genos_arr >= 0)).astype(np.float64)
+
+        matches = I0.T @ I0 + I1.T @ I1 + I2.T @ I2
+        diff_matrix = n_valid - matches
+
+    # Extract upper triangle as flat array
+    return diff_matrix[np.triu_indices(n_samps, k=1)]
 
 
 # Wrapper functions that match the C extension interface
@@ -330,16 +359,11 @@ def Omega(r2_matrix):
 
 def pairwiseDiffs(haps):
     """Wrapper to match shicstats.pairwiseDiffs interface."""
-    # Ensure contiguous array
-    if not haps.flags['C_CONTIGUOUS']:
-        haps = np.ascontiguousarray(haps)
     return pairwise_diffs(haps)
 
 
 def pairwiseDiffsDiplo(genos):
     """Wrapper to match shicstats.pairwiseDiffsDiplo interface."""
-    if not genos.flags['C_CONTIGUOUS']:
-        genos = np.ascontiguousarray(genos)
     return pairwise_diffs_diplo(genos)
 
 
