@@ -153,19 +153,21 @@ def fast_r2_matrix_haploid(haps):
 
     if not has_missing:
         # Fast path: no missing data - simple BLAS approach
+        # Use std directly (avoids computing var then sqrt)
         haps_float = haps_arr.astype(np.float64)
         means = haps_float.mean(axis=1, keepdims=True)
         haps_centered = haps_float - means
-        var = haps_centered.var(axis=1, keepdims=True, ddof=0)
+        std = haps_centered.std(axis=1, keepdims=True, ddof=0)
 
-        mono_mask = (var.flatten() == 0)
-        var_safe = np.where(var == 0, 1, var)
-        haps_norm = haps_centered / np.sqrt(var_safe)
+        mono_mask = (std.flatten() == 0)
+        std_safe = np.where(std == 0, 1, std)
+        haps_norm = haps_centered / std_safe
 
         r = (haps_norm @ haps_norm.T) / n_samples
         r2 = r ** 2
         r2 = np.triu(r2, k=1)
 
+        # Mark monomorphic site pairs as invalid
         r2[mono_mask, :] = -1.0
         r2[:, mono_mask] = -1.0
         return r2
@@ -215,7 +217,7 @@ def fast_r2_matrix_haploid(haps):
     r2 = np.zeros((n_snps, n_snps), dtype=np.float64)
     r2[valid_mask] = numerator[valid_mask] / denominator[valid_mask]
 
-    # Set invalid pairs to -1.0 (filtered by dps.ZnS/omega)
+    # Set invalid pairs to -1.0 (filtered by ZnS/omega)
     r2[~valid_mask] = -1.0
 
     # Zero out diagonal and lower triangle (match C extension format)
