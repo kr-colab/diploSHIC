@@ -840,9 +840,13 @@ def calcAndAppendStatVal(
             getOutlierFrac(precomputedStats["nSL"][subWinIndex])
         )
     elif statName == "distVar":
-        dists = dps.pairwiseDiffs(hapsInSubWin) / float(
-            unmasked[subWinStart - 1 : subWinEnd].count(True)
-        )
+        # Support both list and numpy array for unmasked
+        unmasked_slice = unmasked[subWinStart - 1 : subWinEnd]
+        if hasattr(unmasked_slice, 'count'):
+            n_unmasked = unmasked_slice.count(True)
+        else:
+            n_unmasked = np.sum(unmasked_slice)
+        dists = dps.pairwiseDiffs(hapsInSubWin) / float(n_unmasked)
         statVals["distVar"][instanceIndex].append(np.var(dists, ddof=1))
         statVals["distSkew"][instanceIndex].append(scipy.stats.skew(dists))
         statVals["distKurt"][instanceIndex].append(scipy.stats.kurtosis(dists))
@@ -869,8 +873,10 @@ def calcAndAppendStatValDiplo(
     subWinIndex,
     genosInSubWin,
     unmasked,
+    genosNAlt=None,
 ):
-    genosNAlt = genosInSubWin.to_n_alt()
+    if genosNAlt is None:
+        genosNAlt = genosInSubWin.to_n_alt()
     if statName == "tajD":
         statVals[statName][instanceIndex].append(
             allel.stats.diversity.tajima_d(
@@ -940,9 +946,13 @@ def calcAndAppendStatValDiplo(
                 dps.omega(r2Matrix2)[0]
             )
     elif statName == "distVar":
-        dists = dps.pairwiseDiffsDiplo(genosNAlt) / float(
-            unmasked[subWinStart - 1 : subWinEnd].count(True)
-        )
+        # Support both list and numpy array for unmasked
+        unmasked_slice = unmasked[subWinStart - 1 : subWinEnd]
+        if hasattr(unmasked_slice, 'count'):
+            n_unmasked = unmasked_slice.count(True)
+        else:
+            n_unmasked = np.sum(unmasked_slice)
+        dists = dps.pairwiseDiffsDiplo(genosNAlt) / float(n_unmasked)
         statVals["distVar"][instanceIndex].append(np.var(dists, ddof=1))
         statVals["distSkew"][instanceIndex].append(scipy.stats.skew(dists))
         statVals["distKurt"][instanceIndex].append(scipy.stats.kurtosis(dists))

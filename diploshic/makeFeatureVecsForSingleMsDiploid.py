@@ -1,5 +1,7 @@
 import sys, os
 import allel
+from allel.model.ndarray import SortedIndex
+from allel.util import asarray_ndim
 import random
 import numpy as np
 from diploshic.msTools import *
@@ -93,7 +95,7 @@ def getSubWinBounds(subWinLen, totalPhysLen):  # get inclusive subwin bounds
 
 
 if not maskFileName:
-    unmasked = [True] * totalPhysLen
+    unmasked = np.ones(totalPhysLen, dtype=bool)
 else:
     drawWithReplacement = False
     sys.stderr.write("reading masking data...")
@@ -189,6 +191,8 @@ for instanceIndex in range(numInstances):
                 maskData[instanceIndex],
                 genoMaskData[instanceIndex],
             )
+        # Convert to numpy array for faster operations
+        unmasked = np.array(unmasked, dtype=bool)
         assert len(unmasked) == totalPhysLen
     if haps.shape[1] % 2 == 1:
         haps = haps[:, :-1]
@@ -238,13 +242,14 @@ for instanceIndex in range(numInstances):
         snpIndicesInSubWins = getSnpIndicesInSubWins(
             subWinBounds, positionArrayUnmaskedOnly
         )
+        # Pre-convert data structures to avoid repeated conversions in allel stats functions
+        positionArrayUnmaskedOnly = SortedIndex(positionArrayUnmaskedOnly, copy=False)
+        alleleCountsUnmaskedOnly = asarray_ndim(alleleCountsUnmaskedOnly, 2)
         for statName in statNames:
             statVals[statName].append([])
         for subWinIndex in range(numSubWins):
             subWinStart, subWinEnd = subWinBounds[subWinIndex]
-            unmaskedFrac = unmasked[subWinStart - 1 : subWinEnd].count(
-                True
-            ) / float(subWinLen)
+            unmaskedFrac = np.sum(unmasked[subWinStart - 1 : subWinEnd]) / float(subWinLen)
             assert unmaskedFrac >= unmaskedFracCutoff
             snpIndicesInSubWinUnmasked = snpIndicesInSubWins[subWinIndex]
             sys.stderr.write(
@@ -253,6 +258,8 @@ for instanceIndex in range(numInstances):
             )
             if len(snpIndicesInSubWinUnmasked) > 0:
                 genosInSubWin = genos.subset(sel0=snpIndicesInSubWinUnmasked)
+                # Pre-compute genosNAlt once per subwindow
+                genosNAlt = genosInSubWin.to_n_alt()
                 for statName in statNames:
                     calcAndAppendStatValDiplo(
                         alleleCountsUnmaskedOnly,
@@ -265,6 +272,7 @@ for instanceIndex in range(numInstances):
                         subWinIndex,
                         genosInSubWin,
                         unmasked,
+                        genosNAlt=genosNAlt,
                     )
             else:
                 for statName in statNames:
