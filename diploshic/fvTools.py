@@ -23,17 +23,9 @@ def misPolarizeAlleleCounts(ac, pMisPol):
 
 
 def calledGenoFracAtSite(genosAtSite):
-    calledCount, missingCount = 0, 0
-    for genoForIndiv in genosAtSite:
-        missing = False
-        for allele in genoForIndiv:
-            if allele < 0:
-                missing = True
-        if missing:
-            missingCount += 1
-        else:
-            calledCount += 1
-    return calledCount / float(missingCount + calledCount)
+    # Vectorized: check if any allele in each individual is missing (< 0)
+    has_missing = np.any(genosAtSite < 0, axis=1)
+    return np.sum(~has_missing) / len(has_missing)
 
 
 def isHaploidVcfGenoArray(genos):
@@ -982,8 +974,10 @@ def calcAndAppendStatValForScanDiplo(
     subWinIndex,
     genosInSubWin,
     unmasked,
+    genosNAlt=None,
 ):
-    genosNAlt = genosInSubWin.to_n_alt()
+    if genosNAlt is None:
+        genosNAlt = genosInSubWin.to_n_alt()
     if statName == "tajD":
         statVals[statName].append(
             allel.stats.diversity.tajima_d(
@@ -1051,9 +1045,13 @@ def calcAndAppendStatValForScanDiplo(
             statVals["diplo_ZnS"].append(np.nanmean(r2Matrix))
             statVals["diplo_Omega"].append(dps.omega(r2Matrix2)[0])
     elif statName == "distVar":
-        dists = dps.pairwiseDiffsDiplo(genosNAlt) / float(
-            unmasked[subWinStart - 1 : subWinEnd].count(True)
-        )
+        # Support both list and numpy array for unmasked
+        unmasked_slice = unmasked[subWinStart - 1 : subWinEnd]
+        if hasattr(unmasked_slice, 'count'):
+            n_unmasked = unmasked_slice.count(True)
+        else:
+            n_unmasked = np.sum(unmasked_slice)
+        dists = dps.pairwiseDiffsDiplo(genosNAlt) / float(n_unmasked)
         statVals["distVar"].append(np.var(dists, ddof=1))
         statVals["distSkew"].append(scipy.stats.skew(dists))
         statVals["distKurt"].append(scipy.stats.kurtosis(dists))
@@ -1294,9 +1292,13 @@ def calcAndAppendStatValForScan(
             getOutlierFrac(precomputedStats["nSL"][subWinIndex])
         )
     elif statName == "distVar":
-        dists = dps.pairwiseDiffs(hapsInSubWin) / float(
-            unmasked[subWinStart - 1 : subWinEnd].count(True)
-        )
+        # Support both list and numpy array for unmasked
+        unmasked_slice = unmasked[subWinStart - 1 : subWinEnd]
+        if hasattr(unmasked_slice, 'count'):
+            n_unmasked = unmasked_slice.count(True)
+        else:
+            n_unmasked = np.sum(unmasked_slice)
+        dists = dps.pairwiseDiffs(hapsInSubWin) / float(n_unmasked)
         statVals["distVar"].append(np.var(dists, ddof=1))
         statVals["distSkew"].append(scipy.stats.skew(dists))
         statVals["distKurt"].append(scipy.stats.kurtosis(dists))

@@ -1,5 +1,7 @@
 import os
 import allel
+from allel.model.ndarray import SortedIndex
+from allel.util import asarray_ndim
 import h5py
 import numpy as np
 import sys
@@ -110,9 +112,9 @@ if maskFileName.lower() in ["none", "false"]:
         "Warning: a mask.fa file for the chr arm with all masked sites N'ed out is strongly recommended"
         + " (pass in the reference to remove Ns at the very least)!\n"
     )
-    unmasked = [True] * chrLen
+    unmasked = np.ones(chrLen, dtype=bool)
 else:
-    unmasked = readMaskDataForScan(maskFileName, chrArm)
+    unmasked = np.array(readMaskDataForScan(maskFileName, chrArm), dtype=bool)
     assert len(unmasked) == chrLen
 
 if statFileName.lower() in ["none", "false"]:
@@ -168,10 +170,15 @@ snpIndicesToKeep = [
     i for i in range(len(positions)) if unmasked[positions[i] - 1]
 ]
 genos = allel.GenotypeArray(genos.subset(sel0=snpIndicesToKeep))
-positions = [positions[i] for i in snpIndicesToKeep]
+positions = np.array([positions[i] for i in snpIndicesToKeep])
 alleleCounts = allel.AlleleCountsArray(
     [[alleleCounts[i][0], max(alleleCounts[i][1:])] for i in snpIndicesToKeep]
 )
+
+# Pre-convert data structures to avoid repeated conversions in allel stats functions
+# This is a major optimization - allel functions call np.asarray on every call
+positions = SortedIndex(positions, copy=False)
+alleleCounts = asarray_ndim(alleleCounts, 2)
 
 statNames = [
     "pi",
@@ -227,7 +234,7 @@ if statFileName:
     statFile.write(statHeader + "\n")
 for subWinStart in range(firstSubWinStart, lastSubWinStart + 1, subWinSize):
     subWinEnd = subWinStart + subWinSize - 1
-    unmaskedFrac = unmasked[subWinStart - 1 : subWinEnd].count(True) / float(
+    unmaskedFrac = np.sum(unmasked[subWinStart - 1 : subWinEnd]) / float(
         subWinEnd - subWinStart + 1
     )
     if (
@@ -251,6 +258,8 @@ for subWinStart in range(firstSubWinStart, lastSubWinStart + 1, subWinSize):
         genosInSubWin = allel.GenotypeArray(
             genos.subset(sel0=snpIndicesInSubWins[subWinIndex])
         )
+        # Pre-compute genosNAlt once per subwindow to avoid repeated conversions
+        genosNAlt = genosInSubWin.to_n_alt()
         statValStr = []
         for statName in statNames:
             calcAndAppendStatValForScanDiplo(
@@ -263,6 +272,7 @@ for subWinStart in range(firstSubWinStart, lastSubWinStart + 1, subWinSize):
                 subWinIndex,
                 genosInSubWin,
                 unmasked,
+                genosNAlt=genosNAlt,
             )
         goodSubWins.append(True)
         if statFileName:
