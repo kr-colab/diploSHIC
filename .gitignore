@@ -1,6 +1,44 @@
+# Build and distribution
 build/
 dist/
 *.egg-info/
-*.pyc
-*.pyo
-*.pyd
+*.egg
+MANIFEST
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Profiling
+*.prof
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Numba cache
+__numba_cache__/

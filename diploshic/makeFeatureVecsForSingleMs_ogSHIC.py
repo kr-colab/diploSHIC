@@ -1,5 +1,7 @@
 import sys
 import allel
+from allel.model.ndarray import SortedIndex
+from allel.util import asarray_ndim
 import random
 import numpy as np
 import diploshic.msTools as msTools
@@ -69,7 +71,7 @@ def getSubWinBounds(subWinLen, totalPhysLen):  # get inclusive subwin bounds
 
 
 if not maskFileName:
-    unmasked = [True] * totalPhysLen
+    unmasked = np.ones(totalPhysLen, dtype=bool)
 else:
     drawWithReplacement = False
     if ancFileName.lower() in ["none", "false"]:
@@ -162,6 +164,8 @@ for instanceIndex in range(numInstances):
             unmasked = random.choice(maskData)
         else:
             unmasked = maskData[instanceIndex]
+        # Convert to numpy array for faster operations
+        unmasked = np.array(unmasked, dtype=bool)
         assert len(unmasked) == totalPhysLen
     genos = haps.to_genotypes(ploidy=2)
     unmaskedSnpIndices = [
@@ -189,6 +193,9 @@ for instanceIndex in range(numInstances):
             alleleCountsUnmaskedOnly = fvTools.misPolarizeAlleleCounts(
                 alleleCountsUnmaskedOnly, pMisPol
             )
+        # Pre-convert data structures to avoid repeated conversions in allel stats functions
+        positionArrayUnmaskedOnly = SortedIndex(positionArrayUnmaskedOnly, copy=False)
+        alleleCountsUnmaskedOnly = asarray_ndim(alleleCountsUnmaskedOnly, 2)
         # dafs = alleleCountsUnmaskedOnly[:,1]/float(sampleSizes[0])
         unmaskedHaps = haps.subset(sel0=unmaskedSnpIndices)
         unmaskedGenos = genos.subset(sel0=unmaskedSnpIndices)
@@ -197,9 +204,7 @@ for instanceIndex in range(numInstances):
             statVals[statName].append([])
         for subWinIndex in range(numSubWins):
             subWinStart, subWinEnd = subWinBounds[subWinIndex]
-            unmaskedFrac = unmasked[subWinStart - 1 : subWinEnd].count(
-                True
-            ) / float(subWinLen)
+            unmaskedFrac = np.sum(unmasked[subWinStart - 1 : subWinEnd]) / float(subWinLen)
             assert unmaskedFrac >= unmaskedFracCutoff
             snpIndicesInSubWinUnmasked = [
                 x
@@ -209,25 +214,22 @@ for instanceIndex in range(numInstances):
             if len(snpIndicesInSubWinUnmasked) > 0:
                 hapsInSubWin = haps.subset(sel0=snpIndicesInSubWinUnmasked)
                 genosInSubWin = genos.subset(sel0=snpIndicesInSubWinUnmasked)
-                for statName in statNames:
-                    fvTools.calcAndAppendStatVal(
-                        alleleCountsUnmaskedOnly,
-                        positionArrayUnmaskedOnly,
-                        statName,
-                        subWinStart,
-                        subWinEnd,
-                        statVals,
-                        instanceIndex,
-                        subWinIndex,
-                        hapsInSubWin,
-                        unmasked,
-                        precomputedStats,
-                    )
+                # Use batched function to compute all stats in one pass
+                fvTools.calcAllStatsForSubWin(
+                    alleleCountsUnmaskedOnly,
+                    positionArrayUnmaskedOnly,
+                    subWinStart,
+                    subWinEnd,
+                    statVals,
+                    instanceIndex,
+                    subWinIndex,
+                    hapsInSubWin,
+                    unmasked,
+                    precomputedStats,
+                )
             else:
-                for statName in statNames:
-                    fvTools.appendStatValsForMonomorphic(
-                        statName, statVals, instanceIndex, subWinIndex
-                    )
+                # Use batched function for monomorphic subwindow
+                fvTools.appendAllStatsForMonomorphic(statVals, instanceIndex)
     numInstancesDone += 1
 
 if numInstancesDone != numInstances:

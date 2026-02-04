@@ -1,6 +1,7 @@
 import sys
 import gzip
 import bisect
+import numpy as np
 
 
 def getSnpsOverflowingChr(newPositions, totalPhysLen):
@@ -68,11 +69,14 @@ def msRepToHaplotypeArrayIn(
         positions = msPositionsToIntegerPositions(positions, totalPhysLen)
 
     if transposeHaps:
-        hapArrayIn = []
-        for j in range(len(positions)):
-            hapArrayIn.append([])
-            for i in range(len(samples)):
-                hapArrayIn[j].append(samples[i][j])
+        # Fast vectorized parsing: convert binary strings to numpy array using frombuffer
+        # Each sample is a string like "01001101..." - parse bytes directly
+        hapArray = np.array(
+            [np.frombuffer(s.encode('ascii'), dtype=np.uint8) - ord('0')
+             for s in samples],
+            dtype=np.int8
+        )
+        hapArrayIn = hapArray.T
     else:
         hapArrayIn = samples
     return hapArrayIn, positions

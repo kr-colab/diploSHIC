@@ -1,4 +1,102 @@
 [build-system]
+requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
-requires = ["setuptools<60.0.0", "numpy"]
 
+[project]
+name = "diploSHIC"
+version = "1.1.0"
+description = "A deep learning tool for identifying hard and soft selective sweeps in population genomic data"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Andrew Kern", email = "adkern@uoregon.edu"}
+]
+maintainers = [
+    {name = "Andrew Kern", email = "adkern@uoregon.edu"}
+]
+keywords = [
+    "population genetics",
+    "selective sweeps",
+    "deep learning",
+    "CNN",
+    "genomics",
+    "evolution",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.20",
+    "scipy>=1.7",
+    "matplotlib>=3.5",
+    "pandas>=1.3",
+    "scikit-allel>=1.3",
+    "scikit-learn>=1.0",
+    "tensorflow>=2.13,<3.0",
+    "keras>=2.13",
+    "numba>=0.56",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/kr-colab/diploSHIC"
+Documentation = "https://github.com/kr-colab/diploSHIC/wiki"
+Repository = "https://github.com/kr-colab/diploSHIC.git"
+Issues = "https://github.com/kr-colab/diploSHIC/issues"
+
+[tool.setuptools]
+packages = ["diploshic"]
+script-files = [
+    "diploshic/diploSHIC",
+    "diploshic/makeFeatureVecsForChrArmFromVcfDiploid.py",
+    "diploshic/makeFeatureVecsForChrArmFromVcf_ogSHIC.py",
+    "diploshic/makeFeatureVecsForSingleMsDiploid.py",
+    "diploshic/makeFeatureVecsForSingleMs_ogSHIC.py",
+    "diploshic/makeTrainingSets.py",
+]
+
+[tool.setuptools.package-data]
+diploshic = [
+    "testing/*.fvec",
+    "training/*.fvec",
+]
+
+[tool.ruff]
+line-length = 127
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+]
+ignore = [
+    "E401",  # multiple imports on one line (legacy code)
+    "E501",  # line too long
+    "E711",  # comparison to None (legacy code)
+    "E713",  # test for membership should be 'not in' (legacy code)
+    "E741",  # ambiguous variable name
+    "F401",  # unused import (many are re-exported)
+    "F403",  # star imports
+    "F405",  # may be undefined from star import
+    "F841",  # unused variable (legacy code)
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]

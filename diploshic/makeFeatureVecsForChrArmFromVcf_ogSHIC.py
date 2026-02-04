@@ -1,5 +1,7 @@
 import os
 import allel
+from allel.model.ndarray import SortedIndex
+from allel.util import asarray_ndim
 import h5py
 import numpy as np
 import sys
@@ -61,8 +63,8 @@ def getSubWinBounds(chrLen, subWinSize):
     return subWinBounds
 
 
-def getSnpIndicesInSubWins(subWinSize, lastSubWinEnd, snpLocs):
-    subWinStart = 1
+def getSnpIndicesInSubWins(subWinSize, lastSubWinEnd, snpLocs, firstSubWinStart=1):
+    subWinStart = firstSubWinStart
     subWinEnd = subWinStart + subWinSize - 1
     snpIndicesInSubWins = [[]]
     for i in range(len(snpLocs)):
@@ -90,9 +92,9 @@ if maskFileName.lower() in ["none", "false"]:
         "Warning: a mask.fa file for the chr arm with all masked sites N'ed out is strongly recommended"
         + " (pass in the reference to remove Ns at the very least)!\n"
     )
-    unmasked = [True] * chrLen
+    unmasked = np.ones(chrLen, dtype=bool)
 else:
-    unmasked = readMaskDataForScan(maskFileName, chrArm)
+    unmasked = np.array(readMaskDataForScan(maskFileName, chrArm), dtype=bool)
     assert len(unmasked) == chrLen
 
 if statFileName.lower() in ["none", "false"]:
@@ -189,7 +191,7 @@ snpIndicesToKeep = [
     i for i in range(len(positions)) if unmasked[positions[i] - 1]
 ]
 genos = allel.GenotypeArray(genos.subset(sel0=snpIndicesToKeep))
-positions = [positions[i] for i in snpIndicesToKeep]
+positions = np.array([positions[i] for i in snpIndicesToKeep])
 alleleCounts = allel.AlleleCountsArray(
     [[alleleCounts[i][0], max(alleleCounts[i][1:])] for i in snpIndicesToKeep]
 )
@@ -197,6 +199,11 @@ if not ancestralArmFaFileName.lower() in ["none", "false"]:
     mapping = [mapping[i] for i in snpIndicesToKeep]
     alleleCounts = alleleCounts.map_alleles(mapping)
 haps = genos.to_haplotypes()
+
+# Pre-convert data structures to avoid repeated conversions in allel stats functions
+# This is a major optimization - allel functions call np.asarray on every call
+positions = SortedIndex(positions, copy=False)
+alleleCounts = asarray_ndim(alleleCounts, 2)
 
 subWinBounds = getSubWinBounds(chrLen, subWinSize)
 precomputedStats = {}  # not using this
@@ -217,18 +224,28 @@ for statName in statNames:
 
 startTime = time.perf_counter()
 goodSubWins = []
-lastSubWinEnd = chrLen - chrLen % subWinSize
+
+# Determine iteration bounds based on segment (if specified)
+if segmentStart is not None:
+    # Align firstSubWinStart to subWinSize boundary at or after segmentStart
+    firstSubWinStart = ((segmentStart - 1) // subWinSize) * subWinSize + 1
+    # Align lastSubWinEnd to subWinSize boundary at or before segmentEnd
+    lastSubWinEnd = (segmentEnd // subWinSize) * subWinSize
+else:
+    firstSubWinStart = 1
+    lastSubWinEnd = chrLen - chrLen % subWinSize
+
 snpIndicesInSubWins = getSnpIndicesInSubWins(
-    subWinSize, lastSubWinEnd, positions
+    subWinSize, lastSubWinEnd, positions, firstSubWinStart
 )
 subWinIndex = 0
 lastSubWinStart = lastSubWinEnd - subWinSize + 1
 if statFileName:
     statFile = open(statFileName, "w")
     statFile.write(statHeader + "\n")
-for subWinStart in range(1, lastSubWinStart + 1, subWinSize):
+for subWinStart in range(firstSubWinStart, lastSubWinStart + 1, subWinSize):
     subWinEnd = subWinStart + subWinSize - 1
-    unmaskedFrac = unmasked[subWinStart - 1 : subWinEnd].count(True) / float(
+    unmaskedFrac = np.sum(unmasked[subWinStart - 1 : subWinEnd]) / float(
         subWinEnd - subWinStart + 1
     )
     if (
