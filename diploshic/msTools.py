@@ -69,10 +69,14 @@ def msRepToHaplotypeArrayIn(
         positions = msPositionsToIntegerPositions(positions, totalPhysLen)
 
     if transposeHaps:
-        # Vectorized transpose: convert sample strings to numpy array, transpose, convert back to list
-        # Each sample is a string like "01001101..." - convert to int array
-        hapArray = np.array([[int(c) for c in s] for s in samples], dtype=np.int8)
-        hapArrayIn = hapArray.T.tolist()
+        # Fast vectorized parsing: convert binary strings to numpy array using frombuffer
+        # Each sample is a string like "01001101..." - parse bytes directly
+        hapArray = np.array(
+            [np.frombuffer(s.encode('ascii'), dtype=np.uint8) - ord('0')
+             for s in samples],
+            dtype=np.int8
+        )
+        hapArrayIn = hapArray.T
     else:
         hapArrayIn = samples
     return hapArrayIn, positions
