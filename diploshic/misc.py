@@ -295,7 +295,8 @@ def plot_confusion_matrix(
     values_format=None,
     cmap="viridis",
     ax=None,
-    colorbar=True
+    colorbar=True,
+    domain_adaptation=False
 ):
     """Plot Confusion Matrix.
     Read more in the :ref:`User Guide <confusion_matrix>`.
@@ -361,7 +362,11 @@ def plot_confusion_matrix(
     >>> plt.show()  # doctest: +SKIP
     """
 
-    y_pred = estimator.predict(X)
+    raw_pred = estimator.predict(X)
+    if domain_adaptation and isinstance(raw_pred, list) and len(raw_pred) > 1:
+        y_pred = raw_pred[0]
+    else:
+        y_pred = raw_pred
     cm = confusion_matrix(
         y_true,
         y_pred,

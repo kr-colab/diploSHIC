@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import argparse, time, sys, subprocess
+import argparse, time, sys, os, subprocess
 
 pyExec = sys.executable
 print(pyExec)
@@ -55,6 +55,28 @@ parser_a.add_argument(
     "--confusionFile",
     help="optional file to which confusion matrix plot will be written (default = None)",
     default=None,
+)
+parser_a.add_argument(
+    "--domain-adaptation",
+    help="enable domain adaptation training with gradient reversal",
+    action="store_true",
+)
+parser_a.add_argument(
+    "--empiricalDir",
+    help="path to directory containing empirical.fvec for domain adaptation",
+    default=None,
+)
+parser_a.add_argument(
+    "--da-weight",
+    type=float,
+    help="loss weight for discriminator branch in DA mode (default = 1.0)",
+    default=1.0,
+)
+parser_a.add_argument(
+    "--pred-weight",
+    type=float,
+    help="loss weight for predictor branch in DA mode (default = 1.0)",
+    default=1.0,
 )
 parser_a.set_defaults(mode="train")
 parser_a._positionals.title = "required arguments"
@@ -325,6 +347,8 @@ if argsDict["mode"] in ["train", "predict"]:
     from keras.callbacks import EarlyStopping, ModelCheckpoint
     import keras.backend as K
     import fnmatch
+    from diploshic.network import construct_model, get_custom_objects
+    from diploshic.dataloader import load_fvecs, load_empirical_fvec, DASequence
 
     # nDims = argsDict['nDims']
     numSubWins = argsDict["numSubWins"]
@@ -335,64 +359,23 @@ if argsDict["mode"] == "train":
     epochOption = argsDict["epochs"]
     outputModel = argsDict["outputModel"]
     confusionFile = argsDict["confusionFile"]
-    # nCores = 12
+    domainAdaptation = argsDict["domain_adaptation"]
+    empiricalDir = argsDict["empiricalDir"]
+    daWeight = argsDict["da_weight"]
+    predWeight = argsDict["pred_weight"]
+
     print("loading data now...")
-    # training data
-    hard = np.loadtxt(trainingDir + "hard.fvec", skiprows=1)
-    nDims = int(hard.shape[1] / numSubWins)
-    h1 = np.reshape(hard, (hard.shape[0], nDims, numSubWins))
-    neut = np.loadtxt(trainingDir + "neut.fvec", skiprows=1)
-    n1 = np.reshape(neut, (neut.shape[0], nDims, numSubWins))
-    soft = np.loadtxt(trainingDir + "soft.fvec", skiprows=1)
-    s1 = np.reshape(soft, (soft.shape[0], nDims, numSubWins))
-    lsoft = np.loadtxt(trainingDir + "linkedSoft.fvec", skiprows=1)
-    ls1 = np.reshape(lsoft, (lsoft.shape[0], nDims, numSubWins))
-    lhard = np.loadtxt(trainingDir + "linkedHard.fvec", skiprows=1)
-    lh1 = np.reshape(lhard, (lhard.shape[0], nDims, numSubWins))
+    X_train_all, y_train_all = load_fvecs(trainingDir, numSubWins)
+    nDims = X_train_all.shape[1]
 
-    both = np.concatenate((h1, n1, s1, ls1, lh1))
-    y = np.concatenate(
-        (
-            np.repeat(0, len(h1)),
-            np.repeat(1, len(n1)),
-            np.repeat(2, len(s1)),
-            np.repeat(3, len(ls1)),
-            np.repeat(4, len(lh1)),
-        )
-    )
-
-    # reshape both to explicitly set depth image. need for theanno not sure with tensorflow
-    both = both.reshape(both.shape[0], nDims, numSubWins, 1)
     if trainingDir == testingDir:
         X_train, X_test, y_train, y_test = train_test_split(
-            both, y, test_size=0.2
+            X_train_all, y_train_all, test_size=0.2
         )
     else:
-        X_train = both
-        y_train = y
-        # testing data
-        hard = np.loadtxt(testingDir + "hard.fvec", skiprows=1)
-        h1 = np.reshape(hard, (hard.shape[0], nDims, numSubWins))
-        neut = np.loadtxt(testingDir + "neut.fvec", skiprows=1)
-        n1 = np.reshape(neut, (neut.shape[0], nDims, numSubWins))
-        soft = np.loadtxt(testingDir + "soft.fvec", skiprows=1)
-        s1 = np.reshape(soft, (soft.shape[0], nDims, numSubWins))
-        lsoft = np.loadtxt(testingDir + "linkedSoft.fvec", skiprows=1)
-        ls1 = np.reshape(lsoft, (lsoft.shape[0], nDims, numSubWins))
-        lhard = np.loadtxt(testingDir + "linkedHard.fvec", skiprows=1)
-        lh1 = np.reshape(lhard, (lhard.shape[0], nDims, numSubWins))
-
-        both2 = np.concatenate((h1, n1, s1, ls1, lh1))
-        X_test = both2.reshape(both2.shape[0], nDims, numSubWins, 1)
-        y_test = np.concatenate(
-            (
-                np.repeat(0, len(h1)),
-                np.repeat(1, len(n1)),
-                np.repeat(2, len(s1)),
-                np.repeat(3, len(ls1)),
-                np.repeat(4, len(lh1)),
-            )
-        )
+        X_train = X_train_all
+        y_train = y_train_all
+        X_test, y_test = load_fvecs(testingDir, numSubWins)
 
     Y_train = tf.keras.utils.to_categorical(y_train, 5)
     Y_test = tf.keras.utils.to_categorical(y_test, 5)
@@ -400,159 +383,202 @@ if argsDict["mode"] == "train":
         X_test, Y_test, test_size=0.5
     )
 
-    datagen = ImageDataGenerator(
-        featurewise_center=True,
-        featurewise_std_normalization=True,
-        horizontal_flip=True,
-    )
-
-    validation_gen = ImageDataGenerator(
-        featurewise_center=True,
-        featurewise_std_normalization=True,
-        horizontal_flip=False,
-    )
-    test_gen = ImageDataGenerator(
-        featurewise_center=True,
-        featurewise_std_normalization=True,
-        horizontal_flip=False,
-    )
-
-    # print(X_train.shape)
     print("training set has %d examples" % X_train.shape[0])
     print("validation set has %d examples" % X_valid.shape[0])
     print("test set has %d examples" % X_test.shape[0])
 
-    model_in = Input(X_train.shape[1:])
-    h = Conv2D(128, 3, activation="relu", padding="same", name="conv1_1")(
-        model_in
-    )
-    h = Conv2D(64, 3, activation="relu", padding="same", name="conv1_2")(h)
-    h = MaxPooling2D(pool_size=3, name="pool1", padding="same")(h)
-    h = Dropout(0.15, name="drop1")(h)
-    h = Flatten(name="flaten1")(h)
+    if domainAdaptation:
+        if empiricalDir is None:
+            sys.exit("Error: --empiricalDir is required when using --domain-adaptation")
 
-    dh = Conv2D(
-        128,
-        2,
-        activation="relu",
-        dilation_rate=[1, 3],
-        padding="same",
-        name="dconv1_1",
-    )(model_in)
-    dh = Conv2D(
-        64,
-        2,
-        activation="relu",
-        dilation_rate=[1, 3],
-        padding="same",
-        name="dconv1_2",
-    )(dh)
-    dh = MaxPooling2D(pool_size=2, name="dpool1")(dh)
-    dh = Dropout(0.15, name="ddrop1")(dh)
-    dh = Flatten(name="dflaten1")(dh)
+        # Find empirical fvec file
+        import glob as globmod
+        empirical_candidates = globmod.glob(os.path.join(empiricalDir, "*.fvec"))
+        if not empirical_candidates:
+            sys.exit("Error: no .fvec files found in --empiricalDir: %s" % empiricalDir)
+        empiricalFile = empirical_candidates[0]
+        print("using empirical data from: %s" % empiricalFile)
 
-    dh1 = Conv2D(
-        128,
-        2,
-        activation="relu",
-        dilation_rate=[1, 4],
-        padding="same",
-        name="dconv4_1",
-    )(model_in)
-    dh1 = Conv2D(
-        64,
-        2,
-        activation="relu",
-        dilation_rate=[1, 4],
-        padding="same",
-        name="dconv4_2",
-    )(dh1)
-    dh1 = MaxPooling2D(pool_size=2, name="d1pool1")(dh1)
-    dh1 = Dropout(0.15, name="d1drop1")(dh1)
-    dh1 = Flatten(name="d1flaten1")(dh1)
+        X_empirical = load_empirical_fvec(empiricalFile, numSubWins)
+        print("empirical data has %d examples" % X_empirical.shape[0])
 
-    h = concatenate([h, dh, dh1])
-    h = Dense(512, name="512dense", activation="relu")(h)
-    h = Dropout(0.2, name="drop7")(h)
-    h = Dense(128, name="last_dense", activation="relu")(h)
-    h = Dropout(0.1, name="drop8")(h)
-    output = Dense(5, name="out_dense", activation="softmax")(h)
-    model = Model(inputs=[model_in], outputs=[output])
+        # Compute normalization stats from combined source + target
+        X_all = np.concatenate([X_train, X_empirical], axis=0)
+        da_mean = np.mean(X_all, axis=0)
+        da_std = np.std(X_all, axis=0)
 
-    model.compile(
-        loss="categorical_crossentropy", optimizer="adam", metrics=["accuracy"]
-    )
-
-    # define early stopping callback
-    earlystop = EarlyStopping(
-        monitor="val_accuracy",
-        min_delta=0.001,
-        patience=5,
-        verbose=1,
-        mode="auto",
-    )
-
-    model_json = model.to_json()
-    with open(outputModel + ".json", "w") as json_file:
-        json_file.write(model_json)
-    modWeightsFilepath = outputModel + ".weights.h5"
-    checkpoint = ModelCheckpoint(
-        modWeightsFilepath,
-        monitor="val_accuracy",
-        verbose=1,
-        save_best_only=True,
-        save_weights_only=True,
-        mode="auto",
-    )
-
-    callbacks_list = [earlystop, checkpoint]
-    # callbacks_list = [earlystop] #turning off checkpointing-- just want accuracy assessment
-
-    datagen.fit(X_train)
-    validation_gen.fit(X_valid)
-    test_gen.fit(X_test)
-    start = time.time()
-    model.fit(
-        datagen.flow(X_train, Y_train, batch_size=32),
-        steps_per_epoch=int(len(X_train) / 32),
-        epochs=epochOption,
-        verbose=1,
-        callbacks=callbacks_list,
-        validation_data=validation_gen.flow(X_valid, Y_valid, batch_size=32),
-        validation_steps=int(len(X_test) / 32),
-    )
-    # model.fit(X_train, Y_train, batch_size=32, epochs=100,validation_data=(X_test,Y_test),callbacks=callbacks_list, verbose=1)
-    score = model.evaluate(
-        test_gen.flow(X_test, Y_test, batch_size=32), steps=int(len(Y_test) / 32)
-    )
-    sys.stderr.write(
-        "total time spent fitting and evaluating: %f secs\n"
-        % (time.time() - start)
-    )
-
-    print("evaluation on test set:")
-    print("diploSHIC loss: %f" % score[0])
-    print("diploSHIC accuracy: %f" % score[1])
-    if confusionFile:
-        from diploshic.misc import plot_confusion_matrix
-        import matplotlib.pyplot as plt
-
-        plot_confusion_matrix(
-            model,
-            test_gen.standardize(X_test),
-            Y_test,
-            labels=[0, 4, 2, 3, 1],
-            display_labels=[
-                "Hard",
-                "Hard-linked",
-                "Soft",
-                "Soft-linked",
-                "Neutral",
-            ],
-            cmap=plt.cm.Blues,
-            normalize="true",
+        model = construct_model(
+            X_train.shape[1:],
+            domain_adaptation=True,
+            da_weight=daWeight,
+            pred_weight=predWeight,
         )
-        plt.savefig(confusionFile, bbox_inches="tight")
+
+        # Build DA validation data
+        X_val_src = X_valid
+        Y_val_pred = Y_valid
+        n_val = len(X_val_src)
+        Y_val_disc = np.zeros((n_val, 1))  # all source = 0
+        std_safe = da_std.copy()
+        std_safe[std_safe == 0] = 1.0
+        X_val_normed = (X_val_src - da_mean) / std_safe
+
+        val_monitor = "val_predictor_masked_categorical_accuracy"
+        earlystop = EarlyStopping(
+            monitor=val_monitor,
+            min_delta=0.001,
+            patience=5,
+            verbose=1,
+            mode="max",
+        )
+
+        model_json = model.to_json()
+        with open(outputModel + ".json", "w") as json_file:
+            json_file.write(model_json)
+        modWeightsFilepath = outputModel + ".weights.h5"
+        checkpoint = ModelCheckpoint(
+            modWeightsFilepath,
+            monitor=val_monitor,
+            verbose=1,
+            save_best_only=True,
+            save_weights_only=True,
+            mode="max",
+        )
+        callbacks_list = [earlystop, checkpoint]
+
+        train_seq = DASequence(X_train, Y_train, X_empirical, da_mean, da_std, batch_size=32)
+        # Build validation sequence
+        val_seq = DASequence(X_valid, Y_valid, X_empirical, da_mean, da_std, batch_size=32, shuffle=False)
+
+        start = time.time()
+        model.fit(
+            train_seq,
+            epochs=epochOption,
+            verbose=1,
+            callbacks=callbacks_list,
+            validation_data=val_seq,
+        )
+
+        # Evaluate on test set (source domain only)
+        X_test_normed = (X_test - da_mean) / std_safe
+        score = model.evaluate(X_test_normed, {"predictor": Y_test, "discriminator": np.zeros((len(Y_test), 1))})
+        sys.stderr.write(
+            "total time spent fitting and evaluating: %f secs\n"
+            % (time.time() - start)
+        )
+        print("evaluation on test set:")
+        print("diploSHIC total loss: %f" % score[0])
+        print("diploSHIC predictor loss: %f" % score[1])
+        print("diploSHIC predictor accuracy: %f" % score[3])
+
+        if confusionFile:
+            from diploshic.misc import plot_confusion_matrix
+            import matplotlib.pyplot as plt
+
+            plot_confusion_matrix(
+                model,
+                X_test_normed,
+                Y_test,
+                labels=[0, 4, 2, 3, 1],
+                display_labels=[
+                    "Hard",
+                    "Hard-linked",
+                    "Soft",
+                    "Soft-linked",
+                    "Neutral",
+                ],
+                cmap=plt.cm.Blues,
+                normalize="true",
+                domain_adaptation=True,
+            )
+            plt.savefig(confusionFile, bbox_inches="tight")
+    else:
+        # Standard (non-DA) training path
+        datagen = ImageDataGenerator(
+            featurewise_center=True,
+            featurewise_std_normalization=True,
+            horizontal_flip=True,
+        )
+        validation_gen = ImageDataGenerator(
+            featurewise_center=True,
+            featurewise_std_normalization=True,
+            horizontal_flip=False,
+        )
+        test_gen = ImageDataGenerator(
+            featurewise_center=True,
+            featurewise_std_normalization=True,
+            horizontal_flip=False,
+        )
+
+        model = construct_model(X_train.shape[1:], domain_adaptation=False)
+
+        earlystop = EarlyStopping(
+            monitor="val_accuracy",
+            min_delta=0.001,
+            patience=5,
+            verbose=1,
+            mode="auto",
+        )
+
+        model_json = model.to_json()
+        with open(outputModel + ".json", "w") as json_file:
+            json_file.write(model_json)
+        modWeightsFilepath = outputModel + ".weights.h5"
+        checkpoint = ModelCheckpoint(
+            modWeightsFilepath,
+            monitor="val_accuracy",
+            verbose=1,
+            save_best_only=True,
+            save_weights_only=True,
+            mode="auto",
+        )
+
+        callbacks_list = [earlystop, checkpoint]
+
+        datagen.fit(X_train)
+        validation_gen.fit(X_valid)
+        test_gen.fit(X_test)
+        start = time.time()
+        model.fit(
+            datagen.flow(X_train, Y_train, batch_size=32),
+            steps_per_epoch=int(len(X_train) / 32),
+            epochs=epochOption,
+            verbose=1,
+            callbacks=callbacks_list,
+            validation_data=validation_gen.flow(X_valid, Y_valid, batch_size=32),
+            validation_steps=int(len(X_test) / 32),
+        )
+        score = model.evaluate(
+            test_gen.flow(X_test, Y_test, batch_size=32), steps=int(len(Y_test) / 32)
+        )
+        sys.stderr.write(
+            "total time spent fitting and evaluating: %f secs\n"
+            % (time.time() - start)
+        )
+
+        print("evaluation on test set:")
+        print("diploSHIC loss: %f" % score[0])
+        print("diploSHIC accuracy: %f" % score[1])
+        if confusionFile:
+            from diploshic.misc import plot_confusion_matrix
+            import matplotlib.pyplot as plt
+
+            plot_confusion_matrix(
+                model,
+                test_gen.standardize(X_test),
+                Y_test,
+                labels=[0, 4, 2, 3, 1],
+                display_labels=[
+                    "Hard",
+                    "Hard-linked",
+                    "Soft",
+                    "Soft-linked",
+                    "Neutral",
+                ],
+                cmap=plt.cm.Blues,
+                normalize="true",
+            )
+            plt.savefig(confusionFile, bbox_inches="tight")
 
 elif argsDict["mode"] == "predict":
     import pandas as pd
@@ -580,13 +606,17 @@ elif argsDict["mode"] == "predict":
     json_file = open(argsDict["modelStructure"], "r")
     loaded_model_json = json_file.read()
     json_file.close()
-    model = model_from_json(loaded_model_json)
+    model = model_from_json(loaded_model_json, custom_objects=get_custom_objects())
     # load weights into new model
     model.load_weights(argsDict["modelWeights"])
     print("Loaded model from disk")
 
-    # get predictions
-    preds = model.predict(validation_gen.standardize(testX))
+    # get predictions — handle DA models with multiple outputs
+    raw_preds = model.predict(validation_gen.standardize(testX))
+    if isinstance(raw_preds, list) and len(raw_preds) > 1:
+        preds = raw_preds[0]  # predictor output
+    else:
+        preds = raw_preds
     predictions = np.argmax(preds, axis=1)
 
     # np.repeat(0,len(h1)),np.repeat(1,len(n1)), np.repeat(2,len(s1)), np.repeat(3,len(ls1)), np.repeat(4,len(lh1)
