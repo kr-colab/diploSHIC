@@ -2,7 +2,9 @@
 
 from keras.models import Model
 from keras.layers import (
-    Input, Conv2D, MaxPooling2D, Dense, Dropout, Flatten, concatenate,
+    Input, Conv1D, Conv2D, MaxPooling2D, Dense, Dropout, Flatten,
+    GlobalAveragePooling1D, BatchNormalization, Activation, Reshape,
+    concatenate, Permute,
 )
 
 
@@ -125,3 +127,77 @@ def build_daf_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist_features=4):
     output = Dense(5, activation="softmax", name="out_dense")(merged)
 
     return Model(inputs=[stats_in, daf_in, dist_in], outputs=[output], name="diploSHIC_daf")
+
+
+def build_fused1d_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist_features=4):
+    """Build a 1D CNN with early fusion of all feature types.
+
+    All features are stacked per sub-window into a single channel vector,
+    then processed with 1D convolutions along the sub-window (genomic position)
+    axis. This correctly treats sub-windows as a sequence with spatial locality
+    and different feature types as channels at each position.
+
+    Parameters
+    ----------
+    n_stats : int
+        Number of summary statistics.
+    n_subwins : int
+        Number of sub-windows.
+    n_daf_bins : int
+        Number of DAF histogram bins per sub-window.
+    n_dist_features : int
+        Number of distance summary features per sub-window.
+
+    Returns
+    -------
+    keras.Model
+    """
+    n_channels = n_stats + n_daf_bins + n_dist_features  # 36
+
+    # Three inputs matching the existing data pipeline
+    stats_in = Input(shape=(n_stats, n_subwins, 1), name="stats_input")
+    daf_in = Input(shape=(n_daf_bins, n_subwins, 1), name="daf_input")
+    dist_in = Input(shape=(n_dist_features, n_subwins, 1), name="dist_input")
+
+    # Reshape each from (batch, features, subwins, 1) to (batch, subwins, features)
+    # by stripping the channel dim then transposing
+    stats_r = Reshape((n_stats, n_subwins), name="stats_squeeze")(stats_in)
+    stats_r = Permute((2, 1), name="stats_transpose")(stats_r)  # (batch, 11, 12)
+
+    daf_r = Reshape((n_daf_bins, n_subwins), name="daf_squeeze")(daf_in)
+    daf_r = Permute((2, 1), name="daf_transpose")(daf_r)  # (batch, 11, 20)
+
+    dist_r = Reshape((n_dist_features, n_subwins), name="dist_squeeze")(dist_in)
+    dist_r = Permute((2, 1), name="dist_transpose")(dist_r)  # (batch, 11, 4)
+
+    # Early fusion: concatenate all features at each sub-window position
+    x = concatenate([stats_r, daf_r, dist_r], axis=-1, name="fuse")  # (batch, 11, 36)
+
+    # Conv1D blocks along sub-window axis with batch normalization
+    x = Conv1D(64, 3, padding="same", name="conv1")(x)
+    x = BatchNormalization(name="bn1")(x)
+    x = Activation("relu", name="relu1")(x)
+
+    x = Conv1D(64, 3, padding="same", name="conv2")(x)
+    x = BatchNormalization(name="bn2")(x)
+    x = Activation("relu", name="relu2")(x)
+
+    x = Conv1D(128, 3, padding="same", dilation_rate=2, name="conv3_dil2")(x)
+    x = BatchNormalization(name="bn3")(x)
+    x = Activation("relu", name="relu3")(x)
+
+    x = Conv1D(128, 3, padding="same", dilation_rate=3, name="conv4_dil3")(x)
+    x = BatchNormalization(name="bn4")(x)
+    x = Activation("relu", name="relu4")(x)
+
+    # Global average pooling — collapses sub-window axis without parameter explosion
+    x = GlobalAveragePooling1D(name="gap")(x)
+
+    x = Dense(128, name="dense_128")(x)
+    x = BatchNormalization(name="bn_dense")(x)
+    x = Activation("relu", name="relu_dense")(x)
+    x = Dropout(0.3, name="drop1")(x)
+
+    output = Dense(5, activation="softmax", name="out_dense")(x)
+
+    return Model(inputs=[stats_in, daf_in, dist_in], outputs=[output], name="diploSHIC_fused1d")
