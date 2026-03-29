@@ -208,6 +208,10 @@ alleleCounts = asarray_ndim(alleleCounts, 2)
 subWinBounds = getSubWinBounds(chrLen, subWinSize)
 precomputedStats = {}  # not using this
 
+nDafBins = DAF_N_BINS
+dafHistsAll = []
+dafDistsAll = []
+
 header = "chrom classifiedWinStart classifiedWinEnd bigWinRange".split()
 statHeader = "chrom start end".split()
 for statName in statNames:
@@ -221,6 +225,14 @@ outFile.write(header + "\n")
 statVals = {}
 for statName in statNames:
     statVals[statName] = []
+
+# DAF output file
+dafOutfn = outfn.replace(".fvec", ".daf.fvec")
+if dafOutfn == outfn:
+    dafOutfn = outfn + ".daf.fvec"
+dafHeader = "chrom\tclassifiedWinStart\tclassifiedWinEnd\tbigWinRange\t" + build_daf_header(n_bins=nDafBins, num_sub_wins=numSubWins)
+dafOutFile = open(dafOutfn, "w")
+dafOutFile.write(dafHeader + "\n")
 
 startTime = time.perf_counter()
 goodSubWins = []
@@ -286,6 +298,13 @@ for subWinStart in range(firstSubWinStart, lastSubWinStart + 1, subWinSize):
             statValStr.append("%s: %s" % (statName, statVals[statName][-1]))
         sys.stderr.write("\t".join(statValStr) + "\n")
         goodSubWins.append(True)
+        # DAF features — haploid
+        posInSubWin = np.asarray(positions)[snpIndicesInSubWins[subWinIndex]]
+        dafH, dafD = compute_daf_features_for_subwin(
+            np.asarray(hapsInSubWin), posInSubWin, subWinSize, n_bins=nDafBins, diploid=False
+        )
+        dafHistsAll.append(dafH)
+        dafDistsAll.append(dafD)
         if statFileName:
             statFile.write(
                 "\t".join(
@@ -300,6 +319,8 @@ for subWinStart in range(firstSubWinStart, lastSubWinStart + 1, subWinSize):
                 statName, statVals, subWinIndex
             )
         goodSubWins.append(False)
+        dafHistsAll.append(DAF_UNIFORM.copy())
+        dafDistsAll.append(DAF_ZERO_DIST.copy())
     if goodSubWins[-numSubWins:].count(True) == numSubWins:
         outVec = []
         for statName in statNames:
@@ -318,10 +339,20 @@ for subWinStart in range(firstSubWinStart, lastSubWinStart + 1, subWinSize):
             + "\t".join([str(x) for x in outVec])
         )
         outFile.write("\n")
+        # Write DAF features for this complete window
+        dafRow = flatten_daf_features(dafHistsAll[-numSubWins:], dafDistsAll[-numSubWins:])
+        dafOutFile.write(
+            "%s\t%d\t%d\t%d-%d\t"
+            % (chrArm, midSubWinStart, midSubWinEnd, subWinEnd - winSize + 1, subWinEnd)
+            + "\t".join(["%.18g" % v for v in dafRow])
+        )
+        dafOutFile.write("\n")
     subWinIndex += 1
 if statFileName:
     statFile.close()
 outFile.close()
+dafOutFile.close()
+sys.stderr.write("wrote DAF features to %s\n" % dafOutfn)
 sys.stderr.write(
     "completed in %g seconds\n" % (time.perf_counter() - startTime)
 )

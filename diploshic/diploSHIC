@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import argparse, time, sys, subprocess
+import argparse, time, sys, os, subprocess
 
 pyExec = sys.executable
 print(pyExec)
@@ -56,6 +56,12 @@ parser_a.add_argument(
     help="optional file to which confusion matrix plot will be written (default = None)",
     default=None,
 )
+parser_a.add_argument(
+    "--model",
+    choices=["baseline", "daf"],
+    default="baseline",
+    help="CNN architecture: 'baseline' (original) or 'daf' (with DAF+distance features) (default = baseline)",
+)
 parser_a.set_defaults(mode="train")
 parser_a._positionals.title = "required arguments"
 
@@ -77,6 +83,11 @@ parser_b.add_argument(
     "--simData",
     help="Are we using simulated input data wihout coordinates?",
     action="store_true",
+)
+parser_b.add_argument(
+    "--dafPredictFile",
+    help="path to DAF feature file (.daf.fvec) for multi-input model prediction",
+    default=None,
 )
 parser_b.set_defaults(mode="predict")
 parser_b._positionals.title = "required arguments"
@@ -314,6 +325,7 @@ if argsDict["mode"] in ["train", "predict"]:
     import matplotlib
 
     matplotlib.use("Agg")
+    import json
     import numpy as np
     import tensorflow as tf
     from keras.models import Sequential, Model
@@ -325,9 +337,12 @@ if argsDict["mode"] in ["train", "predict"]:
     from keras.callbacks import EarlyStopping, ModelCheckpoint
     import keras.backend as K
     import fnmatch
+    from diploshic.models import build_baseline_model, build_daf_model
 
     # nDims = argsDict['nDims']
     numSubWins = argsDict["numSubWins"]
+    N_DAF_BINS = 20
+    N_DIST_FEATURES = 4
 
 if argsDict["mode"] == "train":
     trainingDir = argsDict["trainDir"]
@@ -335,77 +350,63 @@ if argsDict["mode"] == "train":
     epochOption = argsDict["epochs"]
     outputModel = argsDict["outputModel"]
     confusionFile = argsDict["confusionFile"]
-    # nCores = 12
+    modelType = argsDict["model"]
+
+    def loadFvecDir(dataDir):
+        """Load all 5 class .fvec files from a directory."""
+        classes = ["hard", "neut", "soft", "linkedSoft", "linkedHard"]
+        arrays = []
+        labels = []
+        for ci, cls in enumerate(classes):
+            data = np.loadtxt(dataDir + cls + ".fvec", skiprows=1)
+            nDims = int(data.shape[1] / numSubWins)
+            data = data.reshape(data.shape[0], nDims, numSubWins, 1)
+            arrays.append(data)
+            labels.append(np.full(data.shape[0], ci))
+        return np.concatenate(arrays), np.concatenate(labels), nDims
+
+    def loadDafFvecDir(dataDir):
+        """Load all 5 class .daf.fvec files, split into DAF and distance arrays."""
+        classes = ["hard", "neut", "soft", "linkedSoft", "linkedHard"]
+        dafArrays, distArrays = [], []
+        nDafCols = N_DAF_BINS * numSubWins
+        for cls in classes:
+            data = np.loadtxt(dataDir + cls + ".daf.fvec", skiprows=1)
+            dafArrays.append(data[:, :nDafCols].reshape(data.shape[0], N_DAF_BINS, numSubWins, 1))
+            distArrays.append(data[:, nDafCols:].reshape(data.shape[0], N_DIST_FEATURES, numSubWins, 1))
+        return np.concatenate(dafArrays), np.concatenate(distArrays)
+
     print("loading data now...")
-    # training data
-    hard = np.loadtxt(trainingDir + "hard.fvec", skiprows=1)
-    nDims = int(hard.shape[1] / numSubWins)
-    h1 = np.reshape(hard, (hard.shape[0], nDims, numSubWins))
-    neut = np.loadtxt(trainingDir + "neut.fvec", skiprows=1)
-    n1 = np.reshape(neut, (neut.shape[0], nDims, numSubWins))
-    soft = np.loadtxt(trainingDir + "soft.fvec", skiprows=1)
-    s1 = np.reshape(soft, (soft.shape[0], nDims, numSubWins))
-    lsoft = np.loadtxt(trainingDir + "linkedSoft.fvec", skiprows=1)
-    ls1 = np.reshape(lsoft, (lsoft.shape[0], nDims, numSubWins))
-    lhard = np.loadtxt(trainingDir + "linkedHard.fvec", skiprows=1)
-    lh1 = np.reshape(lhard, (lhard.shape[0], nDims, numSubWins))
+    X_train, y_train, nDims = loadFvecDir(trainingDir)
 
-    both = np.concatenate((h1, n1, s1, ls1, lh1))
-    y = np.concatenate(
-        (
-            np.repeat(0, len(h1)),
-            np.repeat(1, len(n1)),
-            np.repeat(2, len(s1)),
-            np.repeat(3, len(ls1)),
-            np.repeat(4, len(lh1)),
-        )
-    )
-
-    # reshape both to explicitly set depth image. need for theanno not sure with tensorflow
-    both = both.reshape(both.shape[0], nDims, numSubWins, 1)
     if trainingDir == testingDir:
-        X_train, X_test, y_train, y_test = train_test_split(
-            both, y, test_size=0.2
-        )
+        X_train, X_test, y_train, y_test = train_test_split(X_train, y_train, test_size=0.2)
     else:
-        X_train = both
-        y_train = y
-        # testing data
-        hard = np.loadtxt(testingDir + "hard.fvec", skiprows=1)
-        h1 = np.reshape(hard, (hard.shape[0], nDims, numSubWins))
-        neut = np.loadtxt(testingDir + "neut.fvec", skiprows=1)
-        n1 = np.reshape(neut, (neut.shape[0], nDims, numSubWins))
-        soft = np.loadtxt(testingDir + "soft.fvec", skiprows=1)
-        s1 = np.reshape(soft, (soft.shape[0], nDims, numSubWins))
-        lsoft = np.loadtxt(testingDir + "linkedSoft.fvec", skiprows=1)
-        ls1 = np.reshape(lsoft, (lsoft.shape[0], nDims, numSubWins))
-        lhard = np.loadtxt(testingDir + "linkedHard.fvec", skiprows=1)
-        lh1 = np.reshape(lhard, (lhard.shape[0], nDims, numSubWins))
+        X_test, y_test, _ = loadFvecDir(testingDir)
 
-        both2 = np.concatenate((h1, n1, s1, ls1, lh1))
-        X_test = both2.reshape(both2.shape[0], nDims, numSubWins, 1)
-        y_test = np.concatenate(
-            (
-                np.repeat(0, len(h1)),
-                np.repeat(1, len(n1)),
-                np.repeat(2, len(s1)),
-                np.repeat(3, len(ls1)),
-                np.repeat(4, len(lh1)),
-            )
-        )
+    # Load DAF data if using DAF model
+    if modelType == "daf":
+        print("loading DAF features...")
+        daf_train, dist_train = loadDafFvecDir(trainingDir)
+        if trainingDir == testingDir:
+            # Use same split indices — re-split with same random state not trivial,
+            # so just do a fresh split with the same sizes
+            n_test = X_test.shape[0]
+            n_total = daf_train.shape[0]
+            daf_train, daf_test = daf_train[:n_total - n_test], daf_train[n_total - n_test:]
+            dist_train, dist_test = dist_train[:n_total - n_test], dist_train[n_total - n_test:]
+        else:
+            daf_test, dist_test = loadDafFvecDir(testingDir)
 
     Y_train = tf.keras.utils.to_categorical(y_train, 5)
     Y_test = tf.keras.utils.to_categorical(y_test, 5)
-    X_valid, X_test, Y_valid, Y_test = train_test_split(
-        X_test, Y_test, test_size=0.5
-    )
+    X_valid, X_test, Y_valid, Y_test = train_test_split(X_test, Y_test, test_size=0.5)
 
     datagen = ImageDataGenerator(
         featurewise_center=True,
         featurewise_std_normalization=True,
         horizontal_flip=True,
     )
-
     validation_gen = ImageDataGenerator(
         featurewise_center=True,
         featurewise_std_normalization=True,
@@ -417,117 +418,77 @@ if argsDict["mode"] == "train":
         horizontal_flip=False,
     )
 
-    # print(X_train.shape)
     print("training set has %d examples" % X_train.shape[0])
     print("validation set has %d examples" % X_valid.shape[0])
     print("test set has %d examples" % X_test.shape[0])
 
-    model_in = Input(X_train.shape[1:])
-    h = Conv2D(128, 3, activation="relu", padding="same", name="conv1_1")(
-        model_in
-    )
-    h = Conv2D(64, 3, activation="relu", padding="same", name="conv1_2")(h)
-    h = MaxPooling2D(pool_size=3, name="pool1", padding="same")(h)
-    h = Dropout(0.15, name="drop1")(h)
-    h = Flatten(name="flaten1")(h)
+    # Build model from models.py
+    if modelType == "baseline":
+        model = build_baseline_model(nDims, numSubWins)
+    elif modelType == "daf":
+        model = build_daf_model(nDims, numSubWins)
+        # Split DAF validation/test using same indices
+        idx_valid = np.arange(len(Y_valid) + len(Y_test))
+        # We need to split daf_test the same way X_test was split
+        n_val = X_valid.shape[0]
+        daf_valid, daf_test_final = daf_test[:n_val], daf_test[n_val:]
+        dist_valid, dist_test_final = dist_test[:n_val], dist_test[n_val:]
 
-    dh = Conv2D(
-        128,
-        2,
-        activation="relu",
-        dilation_rate=[1, 3],
-        padding="same",
-        name="dconv1_1",
-    )(model_in)
-    dh = Conv2D(
-        64,
-        2,
-        activation="relu",
-        dilation_rate=[1, 3],
-        padding="same",
-        name="dconv1_2",
-    )(dh)
-    dh = MaxPooling2D(pool_size=2, name="dpool1")(dh)
-    dh = Dropout(0.15, name="ddrop1")(dh)
-    dh = Flatten(name="dflaten1")(dh)
+    model.compile(loss="categorical_crossentropy", optimizer="adam", metrics=["accuracy"])
 
-    dh1 = Conv2D(
-        128,
-        2,
-        activation="relu",
-        dilation_rate=[1, 4],
-        padding="same",
-        name="dconv4_1",
-    )(model_in)
-    dh1 = Conv2D(
-        64,
-        2,
-        activation="relu",
-        dilation_rate=[1, 4],
-        padding="same",
-        name="dconv4_2",
-    )(dh1)
-    dh1 = MaxPooling2D(pool_size=2, name="d1pool1")(dh1)
-    dh1 = Dropout(0.15, name="d1drop1")(dh1)
-    dh1 = Flatten(name="d1flaten1")(dh1)
-
-    h = concatenate([h, dh, dh1])
-    h = Dense(512, name="512dense", activation="relu")(h)
-    h = Dropout(0.2, name="drop7")(h)
-    h = Dense(128, name="last_dense", activation="relu")(h)
-    h = Dropout(0.1, name="drop8")(h)
-    output = Dense(5, name="out_dense", activation="softmax")(h)
-    model = Model(inputs=[model_in], outputs=[output])
-
-    model.compile(
-        loss="categorical_crossentropy", optimizer="adam", metrics=["accuracy"]
-    )
-
-    # define early stopping callback
     earlystop = EarlyStopping(
-        monitor="val_accuracy",
-        min_delta=0.001,
-        patience=5,
-        verbose=1,
-        mode="auto",
+        monitor="val_accuracy", min_delta=0.001, patience=5, verbose=1, mode="auto",
     )
-
     model_json = model.to_json()
     with open(outputModel + ".json", "w") as json_file:
         json_file.write(model_json)
     modWeightsFilepath = outputModel + ".weights.h5"
     checkpoint = ModelCheckpoint(
-        modWeightsFilepath,
-        monitor="val_accuracy",
-        verbose=1,
-        save_best_only=True,
-        save_weights_only=True,
-        mode="auto",
+        modWeightsFilepath, monitor="val_accuracy", verbose=1,
+        save_best_only=True, save_weights_only=True, mode="auto",
     )
-
     callbacks_list = [earlystop, checkpoint]
-    # callbacks_list = [earlystop] #turning off checkpointing-- just want accuracy assessment
 
-    datagen.fit(X_train)
-    validation_gen.fit(X_valid)
-    test_gen.fit(X_test)
+    # Save model metadata
+    with open(outputModel + ".meta.json", "w") as f:
+        json.dump({"model_type": modelType, "nDims": nDims, "numSubWins": numSubWins}, f)
+
     start = time.time()
-    model.fit(
-        datagen.flow(X_train, Y_train, batch_size=32),
-        steps_per_epoch=int(len(X_train) / 32),
-        epochs=epochOption,
-        verbose=1,
-        callbacks=callbacks_list,
-        validation_data=validation_gen.flow(X_valid, Y_valid, batch_size=32),
-        validation_steps=int(len(X_test) / 32),
-    )
-    # model.fit(X_train, Y_train, batch_size=32, epochs=100,validation_data=(X_test,Y_test),callbacks=callbacks_list, verbose=1)
-    score = model.evaluate(
-        test_gen.flow(X_test, Y_test, batch_size=32), steps=int(len(Y_test) / 32)
-    )
+    if modelType == "baseline":
+        datagen.fit(X_train)
+        validation_gen.fit(X_valid)
+        test_gen.fit(X_test)
+        model.fit(
+            datagen.flow(X_train, Y_train, batch_size=32),
+            steps_per_epoch=int(len(X_train) / 32),
+            epochs=epochOption, verbose=1, callbacks=callbacks_list,
+            validation_data=validation_gen.flow(X_valid, Y_valid, batch_size=32),
+            validation_steps=int(len(X_valid) / 32),
+        )
+        score = model.evaluate(
+            test_gen.flow(X_test, Y_test, batch_size=32), steps=int(len(Y_test) / 32)
+        )
+    elif modelType == "daf":
+        # Normalize each input independently
+        def _norm(train, val, test):
+            m, s = train.mean(axis=0), train.std(axis=0)
+            s[s == 0] = 1.0
+            return (train - m) / s, (val - m) / s, (test - m) / s
+
+        X_train_n, X_valid_n, X_test_n = _norm(X_train, X_valid, X_test)
+        daf_train_n, daf_valid_n, daf_test_n = _norm(daf_train, daf_valid, daf_test_final)
+        dist_train_n, dist_valid_n, dist_test_n = _norm(dist_train, dist_valid, dist_test_final)
+
+        model.fit(
+            [X_train_n, daf_train_n, dist_train_n], Y_train,
+            batch_size=32, epochs=epochOption, verbose=1, callbacks=callbacks_list,
+            validation_data=([X_valid_n, daf_valid_n, dist_valid_n], Y_valid),
+        )
+        model.load_weights(modWeightsFilepath)
+        score = model.evaluate([X_test_n, daf_test_n, dist_test_n], Y_test, verbose=0)
+
     sys.stderr.write(
-        "total time spent fitting and evaluating: %f secs\n"
-        % (time.time() - start)
+        "total time spent fitting and evaluating: %f secs\n" % (time.time() - start)
     )
 
     print("evaluation on test set:")
@@ -537,26 +498,29 @@ if argsDict["mode"] == "train":
         from diploshic.misc import plot_confusion_matrix
         import matplotlib.pyplot as plt
 
+        if modelType == "baseline":
+            testData = test_gen.standardize(X_test)
+        else:
+            testData = [X_test_n, daf_test_n, dist_test_n]
         plot_confusion_matrix(
-            model,
-            test_gen.standardize(X_test),
-            Y_test,
+            model, testData, Y_test,
             labels=[0, 4, 2, 3, 1],
-            display_labels=[
-                "Hard",
-                "Hard-linked",
-                "Soft",
-                "Soft-linked",
-                "Neutral",
-            ],
-            cmap=plt.cm.Blues,
-            normalize="true",
+            display_labels=["Hard", "Hard-linked", "Soft", "Soft-linked", "Neutral"],
+            cmap=plt.cm.Blues, normalize="true",
         )
         plt.savefig(confusionFile, bbox_inches="tight")
 
 elif argsDict["mode"] == "predict":
     import pandas as pd
     from keras.models import model_from_json
+
+    # Detect model type from metadata file
+    metaPath = argsDict["modelStructure"].replace(".json", ".meta.json")
+    modelType = "baseline"
+    if os.path.exists(metaPath):
+        with open(metaPath) as f:
+            meta = json.load(f)
+        modelType = meta.get("model_type", "baseline")
 
     # import data from predictFile
     x_df = pd.read_table(argsDict["predictFile"])
@@ -565,28 +529,47 @@ elif argsDict["mode"] == "predict":
     else:
         testX = x_df[list(x_df)[4:]].to_numpy()
     nDims = int(testX.shape[1] / numSubWins)
-    np.reshape(testX, (testX.shape[0], nDims, numSubWins))
-    # add channels
     testX = testX.reshape(testX.shape[0], nDims, numSubWins, 1)
-    # set up generator for normalization
-    validation_gen = ImageDataGenerator(
-        featurewise_center=True,
-        featurewise_std_normalization=True,
-        horizontal_flip=False,
-    )
-    validation_gen.fit(testX)
 
     # import model
     json_file = open(argsDict["modelStructure"], "r")
     loaded_model_json = json_file.read()
     json_file.close()
     model = model_from_json(loaded_model_json)
-    # load weights into new model
     model.load_weights(argsDict["modelWeights"])
     print("Loaded model from disk")
 
-    # get predictions
-    preds = model.predict(validation_gen.standardize(testX))
+    if modelType == "daf":
+        # Load DAF features
+        dafFile = argsDict["dafPredictFile"]
+        if dafFile is None:
+            sys.exit("Error: --dafPredictFile is required for DAF model prediction\n")
+        daf_df = pd.read_table(dafFile)
+        if argsDict["simData"]:
+            dafData = daf_df[list(daf_df)[:]].to_numpy()
+        else:
+            dafData = daf_df[list(daf_df)[4:]].to_numpy()
+        nDafCols = N_DAF_BINS * numSubWins
+        dafX = dafData[:, :nDafCols].reshape(dafData.shape[0], N_DAF_BINS, numSubWins, 1)
+        distX = dafData[:, nDafCols:].reshape(dafData.shape[0], N_DIST_FEATURES, numSubWins, 1)
+
+        # Normalize each input
+        def _norm_single(X):
+            m, s = X.mean(axis=0), X.std(axis=0)
+            s[s == 0] = 1.0
+            return (X - m) / s
+
+        preds = model.predict([_norm_single(testX), _norm_single(dafX), _norm_single(distX)])
+    else:
+        # Baseline model — use ImageDataGenerator normalization
+        validation_gen = ImageDataGenerator(
+            featurewise_center=True,
+            featurewise_std_normalization=True,
+            horizontal_flip=False,
+        )
+        validation_gen.fit(testX)
+        preds = model.predict(validation_gen.standardize(testX))
+
     predictions = np.argmax(preds, axis=1)
 
     # np.repeat(0,len(h1)),np.repeat(1,len(n1)), np.repeat(2,len(s1)), np.repeat(3,len(ls1)), np.repeat(4,len(lh1)

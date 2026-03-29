@@ -150,6 +150,12 @@ header = "\t".join(header)
 statVals = {}
 for statName in statNames:
     statVals[statName] = []
+
+# DAF feature storage — pre-allocate for all reps
+nDafBins = fvTools.DAF_N_BINS
+nDafFeatures = nDafBins * numSubWins + fvTools.DAF_N_DIST * numSubWins
+dafFeatures = np.empty((numInstances, nDafFeatures), dtype=np.float64)
+
 start = time.perf_counter()
 numInstancesDone = 0
 for instanceIndex in range(numInstances):
@@ -171,6 +177,8 @@ for instanceIndex in range(numInstances):
     unmaskedSnpIndices = [
         i for i in range(len(positionArray)) if unmasked[positionArray[i] - 1]
     ]
+    dafHists = []
+    dafDists = []
     if len(unmaskedSnpIndices) == 0:
         for statName in statNames:
             statVals[statName].append([])
@@ -179,6 +187,8 @@ for instanceIndex in range(numInstances):
                 fvTools.appendStatValsForMonomorphic(
                     statName, statVals, instanceIndex, subWinIndex
                 )
+            dafHists.append(fvTools.DAF_UNIFORM.copy())
+            dafDists.append(fvTools.DAF_ZERO_DIST.copy())
     else:
         positionArrayUnmaskedOnly = [
             positionArray[i] for i in unmaskedSnpIndices
@@ -227,9 +237,19 @@ for instanceIndex in range(numInstances):
                     unmasked,
                     precomputedStats,
                 )
+                # DAF features — haploid
+                posInSubWin = np.asarray(positionArrayUnmaskedOnly)[snpIndicesInSubWinUnmasked]
+                dafH, dafD = fvTools.compute_daf_features_for_subwin(
+                    np.asarray(hapsInSubWin), posInSubWin, subWinLen, n_bins=nDafBins, diploid=False
+                )
+                dafHists.append(dafH)
+                dafDists.append(dafD)
             else:
                 # Use batched function for monomorphic subwindow
                 fvTools.appendAllStatsForMonomorphic(statVals, instanceIndex)
+                dafHists.append(fvTools.DAF_UNIFORM.copy())
+                dafDists.append(fvTools.DAF_ZERO_DIST.copy())
+    dafFeatures[instanceIndex] = fvTools.flatten_daf_features(dafHists, dafDists)
     numInstancesDone += 1
 
 if numInstancesDone != numInstances:
@@ -272,6 +292,17 @@ with open(fvecFileName, "w") as fvecFile:
 if statFiles:
     for subWinIndex in range(numSubWins):
         statFiles[subWinIndex].close()
+
+# Write DAF feature vectors
+dafFvecFileName = fvecFileName.replace(".fvec", ".daf.fvec")
+if dafFvecFileName == fvecFileName:
+    dafFvecFileName = fvecFileName + ".daf.fvec"
+dafHeader = fvTools.build_daf_header(n_bins=nDafBins, num_sub_wins=numSubWins)
+with open(dafFvecFileName, "w") as dafFile:
+    dafFile.write(dafHeader + "\n")
+with open(dafFvecFileName, "ab") as dafFile:
+    np.savetxt(dafFile, dafFeatures[:numInstancesDone], delimiter="\t", fmt="%.18g")
+sys.stderr.write("wrote DAF features to %s\n" % dafFvecFileName)
 
 sys.stderr.write(
     "total time spent calculating summary statistics and generating feature vectors: %f secs\n"

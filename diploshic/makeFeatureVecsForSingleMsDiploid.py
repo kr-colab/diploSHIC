@@ -172,6 +172,12 @@ header = "\t".join(header)
 statVals = {}
 for statName in statNames:
     statVals[statName] = []
+
+# DAF feature storage — pre-allocate for all reps
+nDafBins = DAF_N_BINS
+nDafFeatures = nDafBins * numSubWins + DAF_N_DIST * numSubWins
+dafFeatures = np.empty((numInstances, nDafFeatures), dtype=np.float64)
+
 start = time.perf_counter()
 numInstancesDone = 0
 sys.stderr.write("ready to process sim reps. here we go!\n")
@@ -200,6 +206,8 @@ for instanceIndex in range(numInstances):
     unmaskedSnpIndices = [
         i for i in range(len(positionArray)) if unmasked[positionArray[i] - 1]
     ]
+    dafHists = []
+    dafDists = []
     if len(unmaskedSnpIndices) == 0:
         sys.stderr.write("no snps for rep %d\n" % (instanceIndex))
         for statName in statNames:
@@ -209,6 +217,8 @@ for instanceIndex in range(numInstances):
                 appendStatValsForMonomorphic(
                     statName, statVals, instanceIndex, subWinIndex
                 )
+            dafHists.append(DAF_UNIFORM.copy())
+            dafDists.append(DAF_ZERO_DIST.copy())
     else:
         sys.stderr.write("processing snps for rep %d\n" % (instanceIndex))
         if maskFileName:
@@ -274,11 +284,21 @@ for instanceIndex in range(numInstances):
                         unmasked,
                         genosNAlt=genosNAlt,
                     )
+                # DAF features — computed from the same data already in scope
+                posInSubWin = np.asarray(positionArrayUnmaskedOnly)[snpIndicesInSubWinUnmasked]
+                dafH, dafD = compute_daf_features_for_subwin(
+                    np.asarray(genosNAlt), posInSubWin, subWinLen, n_bins=nDafBins, diploid=True
+                )
+                dafHists.append(dafH)
+                dafDists.append(dafD)
             else:
                 for statName in statNames:
                     appendStatValsForMonomorphic(
                         statName, statVals, instanceIndex, subWinIndex
                     )
+                dafHists.append(DAF_UNIFORM.copy())
+                dafDists.append(DAF_ZERO_DIST.copy())
+    dafFeatures[instanceIndex] = flatten_daf_features(dafHists, dafDists)
     numInstancesDone += 1
     sys.stderr.write(
         "finished %d reps after %f seconds\n"
@@ -324,6 +344,17 @@ with open(fvecFileName, "w") as fvecFile:
 if statFiles:
     for subWinIndex in range(numSubWins):
         statFiles[subWinIndex].close()
+
+# Write DAF feature vectors
+dafFvecFileName = fvecFileName.replace(".fvec", ".daf.fvec")
+if dafFvecFileName == fvecFileName:
+    dafFvecFileName = fvecFileName + ".daf.fvec"
+dafHeader = build_daf_header(n_bins=nDafBins, num_sub_wins=numSubWins)
+with open(dafFvecFileName, "w") as dafFile:
+    dafFile.write(dafHeader + "\n")
+with open(dafFvecFileName, "ab") as dafFile:
+    np.savetxt(dafFile, dafFeatures[:numInstancesDone], delimiter="\t", fmt="%.18g")
+sys.stderr.write("wrote DAF features to %s\n" % dafFvecFileName)
 
 sys.stderr.write(
     "total time spent calculating summary statistics and generating feature vectors: %f secs\n"

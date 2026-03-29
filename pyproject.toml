@@ -73,7 +73,9 @@ script-files = [
 [tool.setuptools.package-data]
 diploshic = [
     "testing/*.fvec",
+    "testing/*.daf.fvec",
     "training/*.fvec",
+    "training/*.daf.fvec",
 ]
 
 [tool.ruff]

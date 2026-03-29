@@ -1814,3 +1814,79 @@ def compute_snp_distance_stats(positions, sub_win_len):
         dists.min(),
         dists.max(),
     ], dtype=np.float64)
+
+
+def compute_daf_features_for_subwin(data_array, positions, sub_win_len,
+                                    n_bins=20, diploid=False):
+    """Compute DAF histogram and distance stats for a single sub-window.
+
+    Parameters
+    ----------
+    data_array : array-like
+        For haploid: shape (n_snps, n_samples), 0/1 haplotype values.
+        For diploid: shape (n_snps, n_individuals), alt allele counts (0/1/2).
+    positions : array-like
+        Sorted physical positions of SNPs in this sub-window.
+    sub_win_len : int
+        Physical length of the sub-window.
+    n_bins : int
+        Number of DAF histogram bins.
+    diploid : bool
+        If True, treat data_array as diploid genotype alt counts.
+
+    Returns
+    -------
+    daf_hist : numpy.ndarray, shape (n_bins,)
+    dist_stats : numpy.ndarray, shape (4,)
+    """
+    if diploid:
+        daf_hist = compute_daf_histogram_diploid(data_array, n_bins=n_bins)
+    else:
+        daf_hist = compute_daf_histogram(data_array, n_bins=n_bins)
+    dist_stats = compute_snp_distance_stats(positions, sub_win_len)
+    return daf_hist, dist_stats
+
+
+# Pre-computed constants for DAF features
+DAF_N_BINS = 20
+DAF_N_DIST = 4
+DAF_UNIFORM = np.full(DAF_N_BINS, 1.0 / DAF_N_BINS)
+DAF_ZERO_DIST = np.zeros(DAF_N_DIST, dtype=np.float64)
+
+
+def build_daf_header(n_bins=20, num_sub_wins=11):
+    """Build the column header for a .daf.fvec file.
+
+    Returns
+    -------
+    str
+        Tab-separated header string.
+    """
+    parts = []
+    for b in range(n_bins):
+        for w in range(num_sub_wins):
+            parts.append("dafBin%d_win%d" % (b, w))
+    for feat_name in ("snpDistMean", "snpDistVar", "snpDistMin", "snpDistMax"):
+        for w in range(num_sub_wins):
+            parts.append("%s_win%d" % (feat_name, w))
+    return "\t".join(parts)
+
+
+def flatten_daf_features(daf_hists, dist_stats):
+    """Flatten per-subwindow DAF histograms and distance stats into a feature row.
+
+    Parameters
+    ----------
+    daf_hists : list of arrays, each shape (n_bins,)
+        One DAF histogram per sub-window.
+    dist_stats : list of arrays, each shape (4,)
+        One distance stats vector per sub-window.
+
+    Returns
+    -------
+    numpy.ndarray, shape (n_bins * n_subwins + 4 * n_subwins,)
+        Feature-major order: dafBin0_win0..winN, dafBin1_win0..winN, ..., distMean_win0..winN, ...
+    """
+    daf_matrix = np.array(daf_hists)    # (n_subwins, n_bins)
+    dist_matrix = np.array(dist_stats)  # (n_subwins, 4)
+    return np.concatenate((daf_matrix.T.ravel(), dist_matrix.T.ravel()))
