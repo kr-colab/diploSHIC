@@ -781,17 +781,14 @@ def readMaskDataForScan(maskFileName, chrArm):
 
 
 def normalizeFeatureVec(statVec):
-    minVal = min(statVec)
-    if minVal < 0:
-        statVec = [x - minVal for x in statVec]
-    normStatVec = []
-    statSum = float(sum(statVec))
-    if statSum == 0 or any(np.isinf(statVec)) or any(np.isnan(statVec)):
-        normStatVec = [1.0 / len(statVec)] * len(statVec)
-    else:
-        for k in range(len(statVec)):
-            normStatVec.append(statVec[k] / statSum)
-    return normStatVec
+    statVec = np.asarray(statVec, dtype=np.float64)
+    min_val = statVec.min()
+    if min_val < 0:
+        statVec = statVec - min_val
+    stat_sum = statVec.sum()
+    if stat_sum == 0 or np.any(np.isinf(statVec)) or np.any(np.isnan(statVec)):
+        return list(np.full(len(statVec), 1.0 / len(statVec)))
+    return list(statVec / stat_sum)
 
 
 def maxFDA(pos, ac, start=None, stop=None, is_accessible=None):
