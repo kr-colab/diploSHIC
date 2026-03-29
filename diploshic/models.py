@@ -1,5 +1,6 @@
 """Model definitions for diploSHIC CNN architectures."""
 
+import tensorflow as tf
 from keras.models import Model
 from keras.layers import (
     Input, Conv1D, Conv2D, MaxPooling2D, Dense, Dropout, Flatten,
@@ -277,3 +278,145 @@ def build_multiscale1d_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist_fea
     output = Dense(5, activation="softmax", name="out_dense")(merged)
 
     return Model(inputs=[stats_in, daf_in, dist_in], outputs=[output], name="diploSHIC_multiscale1d")
+
+
+def _res_conv_block(x, filters, kernel_size, dilation_rate=1, name_prefix=""):
+    """Residual Conv1D block: Conv→BN→ReLU + skip connection.
+
+    If input channels differ from filters, a 1x1 projection is applied
+    to the skip path.
+    """
+    from keras.layers import Add
+    shortcut = x
+    h = Conv1D(filters, kernel_size, padding="same", dilation_rate=dilation_rate,
+               name=f"{name_prefix}_conv")(x)
+    h = BatchNormalization(name=f"{name_prefix}_bn")(h)
+
+    # Project shortcut if channel dimensions don't match
+    if shortcut.shape[-1] != filters:
+        shortcut = Conv1D(filters, 1, padding="same", name=f"{name_prefix}_proj")(shortcut)
+        shortcut = BatchNormalization(name=f"{name_prefix}_proj_bn")(shortcut)
+
+    h = Add(name=f"{name_prefix}_add")([h, shortcut])
+    h = Activation("relu", name=f"{name_prefix}_relu")(h)
+    return h
+
+
+class _SliceMean(tf.keras.layers.Layer):
+    """Extract and average specific positions along axis 1."""
+    def __init__(self, indices, **kwargs):
+        super().__init__(**kwargs)
+        self.indices = indices
+
+    def call(self, x):
+        gathered = tf.gather(x, self.indices, axis=1)
+        return tf.reduce_mean(gathered, axis=1)
+
+    def get_config(self):
+        return {**super().get_config(), "indices": self.indices}
+
+
+class _SliceIndex(tf.keras.layers.Layer):
+    """Extract a single position along axis 1."""
+    def __init__(self, index, **kwargs):
+        super().__init__(**kwargs)
+        self.index = index
+
+    def call(self, x):
+        return x[:, self.index, :]
+
+    def get_config(self):
+        return {**super().get_config(), "index": self.index}
+
+
+def _zone_pool(h, center_idx, near_indices, far_indices, name_prefix=""):
+    """Extract concentric zone features from a sequence tensor.
+
+    Returns center, near-flank mean, far-flank mean, and global max.
+    """
+    from keras.layers import GlobalMaxPooling1D
+
+    center = _SliceIndex(center_idx, name=f"{name_prefix}_center")(h)
+    near = _SliceMean(near_indices, name=f"{name_prefix}_near")(h)
+    far = _SliceMean(far_indices, name=f"{name_prefix}_far")(h)
+    gmp = GlobalMaxPooling1D(name=f"{name_prefix}_gmp")(h)
+    return center, near, far, gmp
+
+
+def build_multiscale_res1d_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist_features=4):
+    """Build a multi-scale residual 1D CNN with concentric zone pooling.
+
+    Sequential residual blocks with increasing dilation rates, tapped
+    at each depth. At each tap, four concentric zone pools extract
+    the spatial structure of the sweep signal:
+
+      - Center:    sub-window 5 (the classified window)
+      - Near-flank: mean of sub-windows 3,4,6,7 (immediate neighbors)
+      - Far-flank:  mean of sub-windows 0,1,2,8,9,10 (distant regions)
+      - GMP:       global max across all sub-windows (peak signal)
+
+    The zone design encodes the radial symmetry of sweep effects:
+    sweeps peak at center, close-linked peaks in near-flank,
+    far-linked peaks in far-flank, neutral is uniform. The symmetric
+    pooling (left and right combined per zone) is compatible with
+    sub-window reversal augmentation.
+
+    Parameters
+    ----------
+    n_stats : int
+        Number of summary statistics.
+    n_subwins : int
+        Number of sub-windows.
+    n_daf_bins : int
+        Number of DAF histogram bins per sub-window.
+    n_dist_features : int
+        Number of distance summary features per sub-window.
+
+    Returns
+    -------
+    keras.Model
+    """
+    center_idx = n_subwins // 2  # 5 for n_subwins=11
+    # Near: 2 positions on each side of center
+    near_indices = [center_idx - 2, center_idx - 1, center_idx + 1, center_idx + 2]
+    # Far: everything else (3 positions on each side)
+    far_indices = [i for i in range(n_subwins) if i != center_idx and i not in near_indices]
+
+    stats_in = Input(shape=(n_stats, n_subwins, 1), name="stats_input")
+    daf_in = Input(shape=(n_daf_bins, n_subwins, 1), name="daf_input")
+    dist_in = Input(shape=(n_dist_features, n_subwins, 1), name="dist_input")
+
+    x = _fuse_inputs(stats_in, daf_in, dist_in, n_stats, n_daf_bins, n_dist_features, n_subwins)
+
+    # Block 1: local (RF=3), with projection 36→64
+    h = _res_conv_block(x, 64, 3, dilation_rate=1, name_prefix="res1")
+    ctr1, near1, far1, gmp1 = _zone_pool(h, center_idx, near_indices, far_indices, "t1")
+
+    # Block 2: local (RF=5), residual within 64→64
+    h = _res_conv_block(h, 64, 3, dilation_rate=1, name_prefix="res2")
+    ctr2, near2, far2, gmp2 = _zone_pool(h, center_idx, near_indices, far_indices, "t2")
+
+    # Block 3: full context (RF=11), residual within 64→64
+    h = _res_conv_block(h, 64, 3, dilation_rate=3, name_prefix="res3")
+    ctr3, near3, far3, gmp3 = _zone_pool(h, center_idx, near_indices, far_indices, "t3")
+
+    # 3 taps × 4 zone pools × 64 channels = 768 features
+    merged = concatenate([
+        ctr1, near1, far1, gmp1,
+        ctr2, near2, far2, gmp2,
+        ctr3, near3, far3, gmp3,
+    ], name="merge_zones")
+
+    merged = Dense(256, name="dense_256")(merged)
+    merged = BatchNormalization(name="bn_dense1")(merged)
+    merged = Activation("relu", name="relu_dense1")(merged)
+    merged = Dropout(0.3, name="drop1")(merged)
+
+    merged = Dense(128, name="dense_128")(merged)
+    merged = BatchNormalization(name="bn_dense2")(merged)
+    merged = Activation("relu", name="relu_dense2")(merged)
+    merged = Dropout(0.2, name="drop2")(merged)
+
+    output = Dense(5, activation="softmax", name="out_dense")(merged)
+
+    return Model(inputs=[stats_in, daf_in, dist_in], outputs=[output], name="diploSHIC_multiscale_res1d")
