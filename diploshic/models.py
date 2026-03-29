@@ -174,6 +174,8 @@ def build_fused1d_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist_features
     x = concatenate([stats_r, daf_r, dist_r], axis=-1, name="fuse")  # (batch, 11, 36)
 
     # Conv1D blocks along sub-window axis with batch normalization
+    # Dilation schedule [1, 1, 3] gives receptive field = 11,
+    # exactly covering the full sub-window sequence
     x = Conv1D(64, 3, padding="same", name="conv1")(x)
     x = BatchNormalization(name="bn1")(x)
     x = Activation("relu", name="relu1")(x)
@@ -182,13 +184,9 @@ def build_fused1d_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist_features
     x = BatchNormalization(name="bn2")(x)
     x = Activation("relu", name="relu2")(x)
 
-    x = Conv1D(128, 3, padding="same", dilation_rate=2, name="conv3_dil2")(x)
+    x = Conv1D(128, 3, padding="same", dilation_rate=3, name="conv3_dil3")(x)
     x = BatchNormalization(name="bn3")(x)
     x = Activation("relu", name="relu3")(x)
-
-    x = Conv1D(128, 3, padding="same", dilation_rate=3, name="conv4_dil3")(x)
-    x = BatchNormalization(name="bn4")(x)
-    x = Activation("relu", name="relu4")(x)
 
     # Global average pooling — collapses sub-window axis without parameter explosion
     x = GlobalAveragePooling1D(name="gap")(x)
