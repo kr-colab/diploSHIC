@@ -199,3 +199,81 @@ def build_fused1d_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist_features
     output = Dense(5, activation="softmax", name="out_dense")(x)
 
     return Model(inputs=[stats_in, daf_in, dist_in], outputs=[output], name="diploSHIC_fused1d")
+
+
+def _conv_bn_relu(x, filters, kernel_size, dilation_rate=1, name_prefix=""):
+    """Conv1D → BatchNorm → ReLU block."""
+    x = Conv1D(filters, kernel_size, padding="same", dilation_rate=dilation_rate,
+               name=f"{name_prefix}_conv")(x)
+    x = BatchNormalization(name=f"{name_prefix}_bn")(x)
+    x = Activation("relu", name=f"{name_prefix}_relu")(x)
+    return x
+
+
+def _fuse_inputs(stats_in, daf_in, dist_in, n_stats, n_daf_bins, n_dist_features, n_subwins):
+    """Reshape and concatenate the three inputs into (batch, n_subwins, n_channels)."""
+    stats_r = Permute((2, 1))(Reshape((n_stats, n_subwins))(stats_in))
+    daf_r = Permute((2, 1))(Reshape((n_daf_bins, n_subwins))(daf_in))
+    dist_r = Permute((2, 1))(Reshape((n_dist_features, n_subwins))(dist_in))
+    return concatenate([stats_r, daf_r, dist_r], axis=-1, name="fuse")
+
+
+def build_multiscale1d_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist_features=4):
+    """Build a multi-scale 1D CNN with parallel branches at different receptive fields.
+
+    Three parallel branches process the fused feature sequence with different
+    dilation schedules, each capturing patterns at a different spatial scale:
+      - Local branch:  [1, 1]     RF=5   (adjacent sub-window patterns)
+      - Medium branch: [1, 3]     RF=7   (center-vs-near-flank contrast)
+      - Full branch:   [1, 1, 3]  RF=11  (full sequence context)
+
+    Branches are concatenated after GlobalAveragePooling, giving the dense
+    head multiple views of the same data at different resolutions.
+
+    Parameters
+    ----------
+    n_stats : int
+        Number of summary statistics.
+    n_subwins : int
+        Number of sub-windows.
+    n_daf_bins : int
+        Number of DAF histogram bins per sub-window.
+    n_dist_features : int
+        Number of distance summary features per sub-window.
+
+    Returns
+    -------
+    keras.Model
+    """
+    stats_in = Input(shape=(n_stats, n_subwins, 1), name="stats_input")
+    daf_in = Input(shape=(n_daf_bins, n_subwins, 1), name="daf_input")
+    dist_in = Input(shape=(n_dist_features, n_subwins, 1), name="dist_input")
+
+    x = _fuse_inputs(stats_in, daf_in, dist_in, n_stats, n_daf_bins, n_dist_features, n_subwins)
+
+    # Branch A: local context (RF=5)
+    a = _conv_bn_relu(x, 48, 3, dilation_rate=1, name_prefix="a1")
+    a = _conv_bn_relu(a, 48, 3, dilation_rate=1, name_prefix="a2")
+    a = GlobalAveragePooling1D(name="gap_a")(a)
+
+    # Branch B: medium context (RF=7)
+    b = _conv_bn_relu(x, 48, 3, dilation_rate=1, name_prefix="b1")
+    b = _conv_bn_relu(b, 48, 3, dilation_rate=3, name_prefix="b2")
+    b = GlobalAveragePooling1D(name="gap_b")(b)
+
+    # Branch C: full context (RF=11)
+    c = _conv_bn_relu(x, 48, 3, dilation_rate=1, name_prefix="c1")
+    c = _conv_bn_relu(c, 48, 3, dilation_rate=1, name_prefix="c2")
+    c = _conv_bn_relu(c, 48, 3, dilation_rate=3, name_prefix="c3")
+    c = GlobalAveragePooling1D(name="gap_c")(c)
+
+    merged = concatenate([a, b, c], name="merge_scales")
+
+    merged = Dense(128, name="dense_128")(merged)
+    merged = BatchNormalization(name="bn_dense")(merged)
+    merged = Activation("relu", name="relu_dense")(merged)
+    merged = Dropout(0.3, name="drop1")(merged)
+
+    output = Dense(5, activation="softmax", name="out_dense")(merged)
+
+    return Model(inputs=[stats_in, daf_in, dist_in], outputs=[output], name="diploSHIC_multiscale1d")
