@@ -39,6 +39,10 @@ htmlcov/
 # Claude Code
 CLAUDE.md
 
+# Local experiment artifacts
+benchmarks/
+scripts/
+
 # OS files
 .DS_Store
 Thumbs.db
