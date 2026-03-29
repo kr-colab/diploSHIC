@@ -1918,9 +1918,8 @@ def compute_mu_ld(hap_array):
     exclusivity indicates different LD structure on each side of the
     split — a signature of a sweep boundary.
 
-    Uses numpy vectorized operations: each SNP column is converted to
-    a byte string for O(1) hashing, then set operations find exclusive
-    patterns.
+    Fully vectorized using numpy void-dtype views for row hashing
+    and numpy set operations (setdiff1d, isin) for pattern comparison.
 
     Parameters
     ----------
@@ -1932,34 +1931,40 @@ def compute_mu_ld(hap_array):
     float
         Pattern exclusivity score. Returns 0 if fewer than 2 SNPs.
     """
-    hap_array = np.asarray(hap_array, dtype=np.uint8)
+    hap_array = np.ascontiguousarray(hap_array, dtype=np.uint8)
     n_snps = hap_array.shape[0]
     if n_snps < 2:
         return 0.0
 
     mid = n_snps // 2
-    left = hap_array[:mid]
-    right = hap_array[mid:]
+    left = np.ascontiguousarray(hap_array[:mid])
+    right = np.ascontiguousarray(hap_array[mid:])
 
-    # Convert each SNP row to a hashable bytes object for set operations
-    left_patterns = set(row.tobytes() for row in left)
-    right_patterns = set(row.tobytes() for row in right)
+    # View each row as a single void element for vectorized comparison
+    row_bytes = hap_array.dtype.itemsize * hap_array.shape[1]
+    void_dt = np.dtype((np.void, row_bytes))
 
-    n_left = len(left_patterns)
-    n_right = len(right_patterns)
+    left_v = left.view(void_dt).ravel()
+    right_v = right.view(void_dt).ravel()
+
+    left_unique = np.unique(left_v)
+    right_unique = np.unique(right_v)
+
+    n_left = len(left_unique)
+    n_right = len(right_unique)
 
     if n_left == 0 or n_right == 0:
         return 0.0
 
-    exclusive_left = left_patterns - right_patterns
-    exclusive_right = right_patterns - left_patterns
+    excl_left = np.setdiff1d(left_unique, right_unique)
+    excl_right = np.setdiff1d(right_unique, left_unique)
 
-    # Count SNPs with exclusive patterns
-    n_excl_snps_left = sum(1 for row in left if row.tobytes() in exclusive_left)
-    n_excl_snps_right = sum(1 for row in right if row.tobytes() in exclusive_right)
+    # Count SNPs whose pattern is exclusive to their half
+    n_excl_snps_left = np.isin(left_v, excl_left).sum() if len(excl_left) > 0 else 0
+    n_excl_snps_right = np.isin(right_v, excl_right).sum() if len(excl_right) > 0 else 0
 
-    mu_ld = (len(exclusive_left) * n_excl_snps_left +
-             len(exclusive_right) * n_excl_snps_right) / (n_left * n_right)
+    mu_ld = (len(excl_left) * int(n_excl_snps_left) +
+             len(excl_right) * int(n_excl_snps_right)) / (n_left * n_right)
     return float(mu_ld)
 
 

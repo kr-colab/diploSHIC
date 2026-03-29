@@ -342,7 +342,7 @@ if argsDict["mode"] in ["train", "predict"]:
     # nDims = argsDict['nDims']
     numSubWins = argsDict["numSubWins"]
     N_DAF_BINS = 20
-    N_DIST_FEATURES = 4
+    N_DIST_FEATURES = 7  # 4 distance stats + 3 RAiSD stats
 
 if argsDict["mode"] == "train":
     trainingDir = argsDict["trainDir"]
