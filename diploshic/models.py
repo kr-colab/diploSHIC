@@ -60,7 +60,7 @@ def build_baseline_model(n_stats=12, n_subwins=11):
     return Model(inputs=[model_in], outputs=[output], name="diploSHIC_baseline")
 
 
-def build_daf_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist_features=4):
+def build_daf_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist_features=7):
     """Build the extended diploSHIC CNN with DAF histogram and distance branches.
 
     The summary-stat branches are identical to the baseline model. Two additional
@@ -130,7 +130,7 @@ def build_daf_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist_features=4):
     return Model(inputs=[stats_in, daf_in, dist_in], outputs=[output], name="diploSHIC_daf")
 
 
-def build_fused1d_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist_features=4):
+def build_fused1d_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist_features=7):
     """Build a 1D CNN with early fusion of all feature types.
 
     All features are stacked per sub-window into a single channel vector,
@@ -219,7 +219,7 @@ def _fuse_inputs(stats_in, daf_in, dist_in, n_stats, n_daf_bins, n_dist_features
     return concatenate([stats_r, daf_r, dist_r], axis=-1, name="fuse")
 
 
-def build_multiscale1d_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist_features=4):
+def build_multiscale1d_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist_features=7):
     """Build a multi-scale 1D CNN with parallel branches at different receptive fields.
 
     Three parallel branches process the fused feature sequence with different
@@ -343,7 +343,7 @@ def _zone_pool(h, center_idx, near_indices, far_indices, name_prefix=""):
     return center, near, far, gmp
 
 
-def build_multiscale_res1d_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist_features=4):
+def build_multiscale_res1d_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist_features=7):
     """Build a multi-scale residual 1D CNN with concentric zone pooling.
 
     Sequential residual blocks with increasing dilation rates, tapped

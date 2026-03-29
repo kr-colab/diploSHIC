@@ -1818,7 +1818,7 @@ def compute_snp_distance_stats(positions, sub_win_len):
 
 def compute_daf_features_for_subwin(data_array, positions, sub_win_len,
                                     n_bins=20, diploid=False):
-    """Compute DAF histogram and distance stats for a single sub-window.
+    """Compute DAF histogram, distance stats, and RAiSD stats for a sub-window.
 
     Parameters
     ----------
@@ -1837,19 +1837,180 @@ def compute_daf_features_for_subwin(data_array, positions, sub_win_len,
     Returns
     -------
     daf_hist : numpy.ndarray, shape (n_bins,)
-    dist_stats : numpy.ndarray, shape (4,)
+    extra_stats : numpy.ndarray, shape (7,)
+        [distMean, distVar, distMin, distMax, mu_var, mu_sfs, mu_ld]
     """
     if diploid:
         daf_hist = compute_daf_histogram_diploid(data_array, n_bins=n_bins)
     else:
         daf_hist = compute_daf_histogram(data_array, n_bins=n_bins)
     dist_stats = compute_snp_distance_stats(positions, sub_win_len)
-    return daf_hist, dist_stats
+    data_array = np.asarray(data_array)
+    n_samples = 2 * data_array.shape[1] if diploid else data_array.shape[1]
+    raisd_stats = compute_raisd_stats(data_array, positions, sub_win_len, n_samples, diploid=diploid)
+    return daf_hist, np.concatenate((dist_stats, raisd_stats))
+
+
+# ---------------------------------------------------------------------------
+# RAiSD-inspired features: μ_VAR, μ_SFS, μ_LD
+# ---------------------------------------------------------------------------
+
+def compute_mu_var(n_snps, sub_win_len):
+    """Compute μ_VAR: SNP density within a sub-window.
+
+    Higher values indicate more SNPs per unit length (higher diversity).
+    Near a sweep, diversity drops, so μ_VAR decreases.
+
+    Parameters
+    ----------
+    n_snps : int
+        Number of SNPs in the sub-window.
+    sub_win_len : int or float
+        Physical length of the sub-window.
+
+    Returns
+    -------
+    float
+        SNP density (SNPs per bp).
+    """
+    if sub_win_len <= 0:
+        return 0.0
+    return n_snps / sub_win_len
+
+
+def compute_mu_sfs(dafs, n_samples, slack=1):
+    """Compute μ_SFS: fraction of SNPs at the edges of the SFS.
+
+    Counts SNPs with derived allele count <= slack (singletons) or
+    >= n_samples - slack (near-fixed), normalized by total SNPs.
+    Near a sweep, hitchhiking creates excess rare and near-fixed variants.
+
+    Parameters
+    ----------
+    dafs : array-like
+        Derived allele frequencies (0 to 1) for SNPs in the sub-window.
+    n_samples : int
+        Number of haploid samples (or 2 * n_individuals for diploid).
+    slack : int
+        How many allele count classes to include at each SFS edge.
+        Default 1 means singletons + (n-1)-tons only.
+
+    Returns
+    -------
+    float
+        Fraction of edge SNPs. Returns 0 if no SNPs.
+    """
+    dafs = np.asarray(dafs)
+    if dafs.size == 0:
+        return 0.0
+    # Convert DAFs to allele counts
+    counts = np.round(dafs * n_samples).astype(np.int64)
+    n_edge = np.sum((counts <= slack) | (counts >= n_samples - slack))
+    return float(n_edge) / len(dafs)
+
+
+def compute_mu_ld(hap_array):
+    """Compute μ_LD: haplotype pattern exclusivity between left/right halves.
+
+    Splits the sub-window's SNPs into left and right halves, identifies
+    distinct column patterns (haplotype configurations) in each half,
+    and measures how many patterns are exclusive to one side. High
+    exclusivity indicates different LD structure on each side of the
+    split — a signature of a sweep boundary.
+
+    Uses numpy vectorized operations: each SNP column is converted to
+    a byte string for O(1) hashing, then set operations find exclusive
+    patterns.
+
+    Parameters
+    ----------
+    hap_array : array-like, shape (n_snps, n_samples)
+        Haplotype array (0/1 values).
+
+    Returns
+    -------
+    float
+        Pattern exclusivity score. Returns 0 if fewer than 2 SNPs.
+    """
+    hap_array = np.asarray(hap_array, dtype=np.uint8)
+    n_snps = hap_array.shape[0]
+    if n_snps < 2:
+        return 0.0
+
+    mid = n_snps // 2
+    left = hap_array[:mid]
+    right = hap_array[mid:]
+
+    # Convert each SNP row to a hashable bytes object for set operations
+    left_patterns = set(row.tobytes() for row in left)
+    right_patterns = set(row.tobytes() for row in right)
+
+    n_left = len(left_patterns)
+    n_right = len(right_patterns)
+
+    if n_left == 0 or n_right == 0:
+        return 0.0
+
+    exclusive_left = left_patterns - right_patterns
+    exclusive_right = right_patterns - left_patterns
+
+    # Count SNPs with exclusive patterns
+    n_excl_snps_left = sum(1 for row in left if row.tobytes() in exclusive_left)
+    n_excl_snps_right = sum(1 for row in right if row.tobytes() in exclusive_right)
+
+    mu_ld = (len(exclusive_left) * n_excl_snps_left +
+             len(exclusive_right) * n_excl_snps_right) / (n_left * n_right)
+    return float(mu_ld)
+
+
+def compute_raisd_stats(hap_array, positions, sub_win_len, n_samples, diploid=False):
+    """Compute all three RAiSD-inspired statistics for a sub-window.
+
+    Parameters
+    ----------
+    hap_array : array-like, shape (n_snps, n_samples)
+        For haploid: 0/1 haplotype values.
+        For diploid: alt allele counts (0/1/2) per individual.
+    positions : array-like
+        SNP positions within the sub-window.
+    sub_win_len : int or float
+        Physical length of the sub-window.
+    n_samples : int
+        Number of haploid samples (or 2 * n_individuals for diploid).
+    diploid : bool
+        If True, treat hap_array as diploid genotype counts.
+
+    Returns
+    -------
+    numpy.ndarray, shape (3,)
+        [mu_var, mu_sfs, mu_ld]
+    """
+    hap_array = np.asarray(hap_array)
+    n_snps = hap_array.shape[0]
+
+    mu_var = compute_mu_var(n_snps, sub_win_len)
+
+    if n_snps == 0:
+        return np.array([mu_var, 0.0, 0.0], dtype=np.float64)
+
+    # Compute DAFs for μ_SFS
+    if diploid:
+        n_alleles = 2 * hap_array.shape[1]
+        dafs = hap_array.sum(axis=1) / n_alleles
+    else:
+        dafs = hap_array.sum(axis=1) / hap_array.shape[1]
+        n_alleles = hap_array.shape[1]
+
+    mu_sfs = compute_mu_sfs(dafs, n_alleles)
+    mu_ld = compute_mu_ld(hap_array)
+
+    return np.array([mu_var, mu_sfs, mu_ld], dtype=np.float64)
 
 
 # Pre-computed constants for DAF features
 DAF_N_BINS = 20
-DAF_N_DIST = 4
+DAF_N_RAISD = 3
+DAF_N_DIST = 4 + DAF_N_RAISD  # 4 distance stats + 3 RAiSD stats = 7
 DAF_UNIFORM = np.full(DAF_N_BINS, 1.0 / DAF_N_BINS)
 DAF_ZERO_DIST = np.zeros(DAF_N_DIST, dtype=np.float64)
 
@@ -1866,7 +2027,8 @@ def build_daf_header(n_bins=20, num_sub_wins=11):
     for b in range(n_bins):
         for w in range(num_sub_wins):
             parts.append("dafBin%d_win%d" % (b, w))
-    for feat_name in ("snpDistMean", "snpDistVar", "snpDistMin", "snpDistMax"):
+    for feat_name in ("snpDistMean", "snpDistVar", "snpDistMin", "snpDistMax",
+                       "muVar", "muSFS", "muLD"):
         for w in range(num_sub_wins):
             parts.append("%s_win%d" % (feat_name, w))
     return "\t".join(parts)
@@ -1879,12 +2041,12 @@ def flatten_daf_features(daf_hists, dist_stats):
     ----------
     daf_hists : list of arrays, each shape (n_bins,)
         One DAF histogram per sub-window.
-    dist_stats : list of arrays, each shape (4,)
-        One distance stats vector per sub-window.
+    dist_stats : list of arrays, each shape (7,)
+        One combined distance + RAiSD stats vector per sub-window.
 
     Returns
     -------
-    numpy.ndarray, shape (n_bins * n_subwins + 4 * n_subwins,)
+    numpy.ndarray, shape (n_bins * n_subwins + 7 * n_subwins,)
         Feature-major order: dafBin0_win0..winN, dafBin1_win0..winN, ..., distMean_win0..winN, ...
     """
     daf_matrix = np.array(daf_hists)    # (n_subwins, n_bins)
