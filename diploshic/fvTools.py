@@ -1713,3 +1713,104 @@ def garudH12(hapCounts):
     part1 = part1 * part1
 
     return part1 + part2
+
+
+# ---------------------------------------------------------------------------
+# FAST-NN-inspired features: DAF histograms and inter-SNP distance summaries
+# ---------------------------------------------------------------------------
+
+def compute_daf_histogram(hap_array, n_bins=20):
+    """Compute a histogram of derived allele frequencies from a haplotype array.
+
+    Parameters
+    ----------
+    hap_array : array-like, shape (n_snps, n_samples)
+        Haplotype array (0/1 values). Each row is a SNP, each column a sample.
+    n_bins : int
+        Number of histogram bins spanning (0, 1]. Bin edges are evenly spaced.
+
+    Returns
+    -------
+    numpy.ndarray, shape (n_bins,)
+        Counts of SNPs falling into each DAF bin, normalized to sum to 1.
+        Returns uniform vector if no SNPs.
+    """
+    hap_array = np.asarray(hap_array, dtype=np.float64)
+    if hap_array.size == 0 or hap_array.shape[0] == 0:
+        return np.full(n_bins, 1.0 / n_bins)
+
+    n_samples = hap_array.shape[1]
+    dafs = hap_array.sum(axis=1) / n_samples
+
+    # Bin into (0, 1] — exclude monomorphic sites at DAF=0
+    bin_edges = np.linspace(0, 1, n_bins + 1)
+    hist, _ = np.histogram(dafs, bins=bin_edges)
+
+    total = hist.sum()
+    if total == 0:
+        return np.full(n_bins, 1.0 / n_bins)
+    return hist.astype(np.float64) / total
+
+
+def compute_daf_histogram_diploid(genos_n_alt, n_bins=20):
+    """Compute a DAF histogram from diploid genotype alt-allele counts.
+
+    Parameters
+    ----------
+    genos_n_alt : array-like, shape (n_snps, n_individuals)
+        Number of alt alleles per individual per SNP (0, 1, or 2).
+    n_bins : int
+        Number of histogram bins spanning [0, 1].
+
+    Returns
+    -------
+    numpy.ndarray, shape (n_bins,)
+        Normalized histogram of DAFs.
+    """
+    genos_n_alt = np.asarray(genos_n_alt, dtype=np.float64)
+    if genos_n_alt.size == 0 or genos_n_alt.shape[0] == 0:
+        return np.full(n_bins, 1.0 / n_bins)
+
+    n_alleles = 2 * genos_n_alt.shape[1]
+    dafs = genos_n_alt.sum(axis=1) / n_alleles
+
+    bin_edges = np.linspace(0, 1, n_bins + 1)
+    hist, _ = np.histogram(dafs, bins=bin_edges)
+
+    total = hist.sum()
+    if total == 0:
+        return np.full(n_bins, 1.0 / n_bins)
+    return hist.astype(np.float64) / total
+
+
+def compute_snp_distance_stats(positions, sub_win_len):
+    """Compute summary statistics of inter-SNP distances within a sub-window.
+
+    Parameters
+    ----------
+    positions : array-like
+        Sorted physical positions of SNPs within a sub-window.
+    sub_win_len : int
+        Physical length of the sub-window (used for normalization).
+
+    Returns
+    -------
+    numpy.ndarray, shape (4,)
+        [mean, variance, min, max] of inter-SNP distances, each normalized
+        by sub_win_len. Returns zeros if fewer than 2 SNPs.
+    """
+    if len(positions) < 2:
+        return np.zeros(4, dtype=np.float64)
+
+    positions = np.asarray(positions, dtype=np.float64)
+    dists = np.diff(positions)
+
+    # Normalize by sub-window length
+    dists = dists / sub_win_len
+
+    return np.array([
+        dists.mean(),
+        dists.var(),
+        dists.min(),
+        dists.max(),
+    ], dtype=np.float64)
