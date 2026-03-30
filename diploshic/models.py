@@ -60,7 +60,7 @@ def build_baseline_model(n_stats=12, n_subwins=11):
     return Model(inputs=[model_in], outputs=[output], name="diploSHIC_baseline")
 
 
-def build_daf_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist_features=7):
+def build_daf_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist_features=10):
     """Build the extended diploSHIC CNN with DAF histogram and distance branches.
 
     The summary-stat branches are identical to the baseline model. Two additional
@@ -130,7 +130,7 @@ def build_daf_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist_features=7):
     return Model(inputs=[stats_in, daf_in, dist_in], outputs=[output], name="diploSHIC_daf")
 
 
-def build_fused1d_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist_features=7):
+def build_fused1d_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist_features=10):
     """Build a 1D CNN with early fusion of all feature types.
 
     All features are stacked per sub-window into a single channel vector,
@@ -219,7 +219,7 @@ def _fuse_inputs(stats_in, daf_in, dist_in, n_stats, n_daf_bins, n_dist_features
     return concatenate([stats_r, daf_r, dist_r], axis=-1, name="fuse")
 
 
-def build_multiscale1d_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist_features=7):
+def build_multiscale1d_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist_features=10):
     """Build a multi-scale 1D CNN with parallel branches at different receptive fields.
 
     Three parallel branches process the fused feature sequence with different
@@ -280,8 +280,24 @@ def build_multiscale1d_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist_fea
     return Model(inputs=[stats_in, daf_in, dist_in], outputs=[output], name="diploSHIC_multiscale1d")
 
 
-def _res_conv_block(x, filters, kernel_size, dilation_rate=1, name_prefix=""):
-    """Residual Conv1D block: Conv→BN→ReLU + skip connection.
+def _make_norm_layer(name, use_bn=True, groups=16):
+    """Create a normalization layer based on the use_bn setting.
+
+    use_bn=True:  BatchNormalization (stores running stats — good ID, bad OOD)
+    use_bn=False: no normalization
+    use_bn='group': GroupNormalization (per-sample, no stored stats — good for OOD)
+    """
+    if use_bn is True:
+        return BatchNormalization(name=name)
+    elif use_bn == "group":
+        from keras.layers import GroupNormalization
+        return GroupNormalization(groups=groups, name=name)
+    else:
+        return Activation("linear", name=name)  # identity passthrough
+
+
+def _res_conv_block(x, filters, kernel_size, dilation_rate=1, name_prefix="", use_bn=True):
+    """Residual Conv1D block: Conv→[Norm]→ReLU + skip connection.
 
     If input channels differ from filters, a 1x1 projection is applied
     to the skip path.
@@ -290,12 +306,12 @@ def _res_conv_block(x, filters, kernel_size, dilation_rate=1, name_prefix=""):
     shortcut = x
     h = Conv1D(filters, kernel_size, padding="same", dilation_rate=dilation_rate,
                name=f"{name_prefix}_conv")(x)
-    h = BatchNormalization(name=f"{name_prefix}_bn")(h)
+    h = _make_norm_layer(f"{name_prefix}_bn", use_bn)(h)
 
     # Project shortcut if channel dimensions don't match
     if shortcut.shape[-1] != filters:
         shortcut = Conv1D(filters, 1, padding="same", name=f"{name_prefix}_proj")(shortcut)
-        shortcut = BatchNormalization(name=f"{name_prefix}_proj_bn")(shortcut)
+        shortcut = _make_norm_layer(f"{name_prefix}_proj_bn", use_bn)(shortcut)
 
     h = Add(name=f"{name_prefix}_add")([h, shortcut])
     h = Activation("relu", name=f"{name_prefix}_relu")(h)
@@ -365,7 +381,7 @@ def _zone_pool(h, center_idx, near_indices, far_indices, name_prefix=""):
     return center, near, far, gmp
 
 
-def build_multiscale_res1d_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist_features=7):
+def build_multiscale_res1d_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist_features=10, use_bn=True):
     """Build a multi-scale residual 1D CNN with concentric zone pooling.
 
     Sequential residual blocks with increasing dilation rates, tapped
@@ -417,15 +433,15 @@ def build_multiscale_res1d_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist
     x = _InstanceNorm1D(name="instance_norm")(x)
 
     # Block 1: local (RF=3), with projection 36→64
-    h = _res_conv_block(x, 64, 3, dilation_rate=1, name_prefix="res1")
+    h = _res_conv_block(x, 64, 3, dilation_rate=1, name_prefix="res1", use_bn=use_bn)
     ctr1, near1, far1, gmp1 = _zone_pool(h, center_idx, near_indices, far_indices, "t1")
 
     # Block 2: local (RF=5), residual within 64→64
-    h = _res_conv_block(h, 64, 3, dilation_rate=1, name_prefix="res2")
+    h = _res_conv_block(h, 64, 3, dilation_rate=1, name_prefix="res2", use_bn=use_bn)
     ctr2, near2, far2, gmp2 = _zone_pool(h, center_idx, near_indices, far_indices, "t2")
 
     # Block 3: full context (RF=11), residual within 64→64
-    h = _res_conv_block(h, 64, 3, dilation_rate=3, name_prefix="res3")
+    h = _res_conv_block(h, 64, 3, dilation_rate=3, name_prefix="res3", use_bn=use_bn)
     ctr3, near3, far3, gmp3 = _zone_pool(h, center_idx, near_indices, far_indices, "t3")
 
     # 3 taps × 4 zone pools × 64 channels = 768 features
@@ -436,12 +452,12 @@ def build_multiscale_res1d_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist
     ], name="merge_zones")
 
     merged = Dense(256, name="dense_256")(merged)
-    merged = BatchNormalization(name="bn_dense1")(merged)
+    merged = _make_norm_layer("bn_dense1", use_bn)(merged)
     merged = Activation("relu", name="relu_dense1")(merged)
     merged = Dropout(0.3, name="drop1")(merged)
 
     merged = Dense(128, name="dense_128")(merged)
-    merged = BatchNormalization(name="bn_dense2")(merged)
+    merged = _make_norm_layer("bn_dense2", use_bn)(merged)
     merged = Activation("relu", name="relu_dense2")(merged)
     merged = Dropout(0.2, name="drop2")(merged)
 

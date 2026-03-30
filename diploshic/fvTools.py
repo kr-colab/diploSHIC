@@ -1845,7 +1845,8 @@ def compute_daf_features_for_subwin(data_array, positions, sub_win_len,
     data_array = np.asarray(data_array)
     n_samples = 2 * data_array.shape[1] if diploid else data_array.shape[1]
     raisd_stats = compute_raisd_stats(data_array, positions, sub_win_len, n_samples, diploid=diploid)
-    return daf_hist, np.concatenate((dist_stats, raisd_stats))
+    scan_stats = raisd_scan(data_array, positions, sub_win_len, n_samples, diploid=diploid)
+    return daf_hist, np.concatenate((dist_stats, raisd_stats, scan_stats))
 
 
 # ---------------------------------------------------------------------------
@@ -2009,10 +2010,236 @@ def compute_raisd_stats(hap_array, positions, sub_win_len, n_samples, diploid=Fa
     return np.array([mu_var, mu_sfs, mu_ld], dtype=np.float64)
 
 
+def _vectorized_mu_var_sfs(positions, dafs, n_samples, sub_win_len, win_snps):
+    """Vectorized μ_VAR and μ_SFS for all sliding windows at once.
+
+    No Python loops — uses numpy array slicing and rolling operations.
+    """
+    n_windows = len(positions) - win_snps + 1
+
+    # μ_VAR: span of each window / (sub_win_len * win_snps)
+    # span[w] = positions[w + win_snps - 1] - positions[w]
+    spans = positions[win_snps - 1:] - positions[:n_windows]
+    mu_var_all = spans / (sub_win_len * win_snps) if sub_win_len > 0 else np.zeros(n_windows)
+
+    # μ_SFS: count of edge SNPs in each window
+    # Pre-compute per-SNP edge status
+    counts = np.round(dafs * n_samples).astype(np.int64)
+    is_edge = ((counts <= 1) | (counts >= n_samples - 1)).astype(np.float64)
+    # Cumulative sum for sliding window counts
+    cum_edge = np.concatenate(([0.0], np.cumsum(is_edge)))
+    edge_counts = cum_edge[win_snps:] - cum_edge[:n_windows]
+    mu_sfs_all = edge_counts / win_snps
+
+    # Midpoints for each window
+    midpoints = (positions[:n_windows] + positions[win_snps - 1:]) / 2.0
+
+    return mu_var_all, mu_sfs_all, midpoints
+
+
+def _sliding_mu_ld(hap_array, win_snps):
+    """Compute μ_LD for each sliding window position using numpy.
+
+    For each window, splits into left/right halves and computes
+    pattern exclusivity. Uses void-dtype views for fast row comparison.
+    """
+    from numba import njit
+
+    @njit(cache=True)
+    def _mu_ld_numba(hap_flat, n_snps, n_cols, win_snps):
+        """Numba-accelerated μ_LD scan over all sliding windows.
+
+        hap_flat: flattened uint8 haplotype matrix (n_snps * n_cols)
+        n_snps: total number of SNPs
+        n_cols: number of samples
+        win_snps: window size in SNPs
+        """
+        n_windows = n_snps - win_snps + 1
+        result = np.empty(n_windows, dtype=np.float64)
+        half = win_snps // 2
+
+        for w in range(n_windows):
+            # Count unique patterns in left and right halves
+            # Use simple O(n²) comparison — win_snps is small (50)
+            left_start = w
+            left_end = w + half
+            right_start = w + half
+            right_end = w + win_snps
+
+            # Collect unique patterns for left half
+            n_left_unique = 0
+            left_unique_ids = np.empty(half, dtype=np.int64)
+            left_row_ids = np.empty(half, dtype=np.int64)
+
+            for i in range(left_start, left_end):
+                is_new = True
+                row_i_start = i * n_cols
+                for u in range(n_left_unique):
+                    uid = left_unique_ids[u]
+                    row_u_start = uid * n_cols
+                    match = True
+                    for c in range(n_cols):
+                        if hap_flat[row_i_start + c] != hap_flat[row_u_start + c]:
+                            match = False
+                            break
+                    if match:
+                        is_new = False
+                        left_row_ids[i - left_start] = u
+                        break
+                if is_new:
+                    left_unique_ids[n_left_unique] = i
+                    left_row_ids[i - left_start] = n_left_unique
+                    n_left_unique += 1
+
+            # Collect unique patterns for right half
+            n_right_unique = 0
+            right_unique_ids = np.empty(win_snps - half, dtype=np.int64)
+            right_row_ids = np.empty(win_snps - half, dtype=np.int64)
+
+            for i in range(right_start, right_end):
+                is_new = True
+                row_i_start = i * n_cols
+                for u in range(n_right_unique):
+                    uid = right_unique_ids[u]
+                    row_u_start = uid * n_cols
+                    match = True
+                    for c in range(n_cols):
+                        if hap_flat[row_i_start + c] != hap_flat[row_u_start + c]:
+                            match = False
+                            break
+                    if match:
+                        is_new = False
+                        right_row_ids[i - right_start] = u
+                        break
+                if is_new:
+                    right_unique_ids[n_right_unique] = i
+                    right_row_ids[i - right_start] = n_right_unique
+                    n_right_unique += 1
+
+            if n_left_unique == 0 or n_right_unique == 0:
+                result[w] = 0.0
+                continue
+
+            # Count exclusive patterns: left patterns not in right, and vice versa
+            n_excl_left_patterns = 0
+            n_excl_left_snps = 0
+            for lu in range(n_left_unique):
+                lid = left_unique_ids[lu]
+                lid_start = lid * n_cols
+                found_in_right = False
+                for ru in range(n_right_unique):
+                    rid = right_unique_ids[ru]
+                    rid_start = rid * n_cols
+                    match = True
+                    for c in range(n_cols):
+                        if hap_flat[lid_start + c] != hap_flat[rid_start + c]:
+                            match = False
+                            break
+                    if match:
+                        found_in_right = True
+                        break
+                if not found_in_right:
+                    n_excl_left_patterns += 1
+                    # Count SNPs with this pattern
+                    for s in range(half):
+                        if left_row_ids[s] == lu:
+                            n_excl_left_snps += 1
+
+            n_excl_right_patterns = 0
+            n_excl_right_snps = 0
+            for ru in range(n_right_unique):
+                rid = right_unique_ids[ru]
+                rid_start = rid * n_cols
+                found_in_left = False
+                for lu in range(n_left_unique):
+                    lid = left_unique_ids[lu]
+                    lid_start = lid * n_cols
+                    match = True
+                    for c in range(n_cols):
+                        if hap_flat[lid_start + c] != hap_flat[rid_start + c]:
+                            match = False
+                            break
+                    if match:
+                        found_in_left = True
+                        break
+                if not found_in_left:
+                    n_excl_right_patterns += 1
+                    for s in range(win_snps - half):
+                        if right_row_ids[s] == ru:
+                            n_excl_right_snps += 1
+
+            result[w] = (n_excl_left_patterns * n_excl_left_snps +
+                         n_excl_right_patterns * n_excl_right_snps) / (n_left_unique * n_right_unique)
+
+        return result
+
+    hap_array = np.ascontiguousarray(hap_array, dtype=np.uint8)
+    n_snps, n_cols = hap_array.shape
+    return _mu_ld_numba(hap_array.ravel(), n_snps, n_cols, win_snps)
+
+
+def raisd_scan(hap_array, positions, sub_win_len, n_samples, win_snps=50, diploid=False):
+    """Run a fine-grained RAiSD-style μ scan within a sub-window.
+
+    Vectorized μ_VAR and μ_SFS computation, numba-accelerated μ_LD scan.
+
+    Returns
+    -------
+    numpy.ndarray, shape (3,)
+        [mu_product, max_mu_scan, peak_position_frac]
+    """
+    hap_array = np.ascontiguousarray(hap_array, dtype=np.uint8)
+    positions = np.asarray(positions, dtype=np.float64)
+    n_snps = hap_array.shape[0]
+
+    if n_snps == 0:
+        return np.array([0.0, 0.0, 0.5], dtype=np.float64)
+
+    if diploid:
+        dafs = hap_array.astype(np.float64).sum(axis=1) / (2 * hap_array.shape[1])
+    else:
+        dafs = hap_array.astype(np.float64).sum(axis=1) / hap_array.shape[1]
+
+    # Sub-window-level composite μ
+    mu_var_sw = compute_mu_var(n_snps, sub_win_len)
+    mu_sfs_sw = compute_mu_sfs(dafs, n_samples)
+    mu_ld_sw = compute_mu_ld(hap_array)
+    mu_product = mu_var_sw * mu_sfs_sw * mu_ld_sw
+
+    if n_snps < win_snps:
+        peak_frac = 0.5
+        if n_snps > 1 and positions[-1] > positions[0]:
+            mid_pos = (positions[0] + positions[-1]) / 2.0
+            peak_frac = np.clip((mid_pos - positions[0]) / (positions[-1] - positions[0]), 0, 1)
+        return np.array([mu_product, mu_product, peak_frac], dtype=np.float64)
+
+    # Vectorized μ_VAR and μ_SFS across all windows
+    mu_var_all, mu_sfs_all, midpoints = _vectorized_mu_var_sfs(
+        positions, dafs, n_samples, sub_win_len, win_snps
+    )
+
+    # Numba-accelerated μ_LD across all windows
+    mu_ld_all = _sliding_mu_ld(hap_array, win_snps)
+
+    # Composite μ for each window
+    mu_scan = mu_var_all * mu_sfs_all * mu_ld_all
+
+    max_idx = np.argmax(mu_scan)
+    max_mu = mu_scan[max_idx]
+
+    if positions[-1] > positions[0]:
+        peak_frac = (midpoints[max_idx] - positions[0]) / (positions[-1] - positions[0])
+    else:
+        peak_frac = 0.5
+
+    return np.array([mu_product, max_mu, np.clip(peak_frac, 0, 1)], dtype=np.float64)
+
+
 # Pre-computed constants for DAF features
 DAF_N_BINS = 20
 DAF_N_RAISD = 3
-DAF_N_DIST = 4 + DAF_N_RAISD  # 4 distance stats + 3 RAiSD stats = 7
+DAF_N_SCAN = 3   # mu_product, max_mu_scan, peak_position_frac
+DAF_N_DIST = 4 + DAF_N_RAISD + DAF_N_SCAN  # 4 distance + 3 RAiSD + 3 scan = 10
 DAF_UNIFORM = np.full(DAF_N_BINS, 1.0 / DAF_N_BINS)
 DAF_ZERO_DIST = np.zeros(DAF_N_DIST, dtype=np.float64)
 
@@ -2030,7 +2257,8 @@ def build_daf_header(n_bins=20, num_sub_wins=11):
         for w in range(num_sub_wins):
             parts.append("dafBin%d_win%d" % (b, w))
     for feat_name in ("snpDistMean", "snpDistVar", "snpDistMin", "snpDistMax",
-                       "muVar", "muSFS", "muLD"):
+                       "muVar", "muSFS", "muLD",
+                       "muProduct", "maxMuScan", "peakPosFrac"):
         for w in range(num_sub_wins):
             parts.append("%s_win%d" % (feat_name, w))
     return "\t".join(parts)
@@ -2043,12 +2271,12 @@ def flatten_daf_features(daf_hists, dist_stats):
     ----------
     daf_hists : list of arrays, each shape (n_bins,)
         One DAF histogram per sub-window.
-    dist_stats : list of arrays, each shape (7,)
-        One combined distance + RAiSD stats vector per sub-window.
+    dist_stats : list of arrays, each shape (10,)
+        One combined distance + RAiSD + scan stats vector per sub-window.
 
     Returns
     -------
-    numpy.ndarray, shape (n_bins * n_subwins + 7 * n_subwins,)
+    numpy.ndarray, shape (n_bins * n_subwins + 10 * n_subwins,)
         Feature-major order: dafBin0_win0..winN, dafBin1_win0..winN, ..., distMean_win0..winN, ...
     """
     daf_matrix = np.array(daf_hists)    # (n_subwins, n_bins)
