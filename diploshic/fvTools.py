@@ -2037,151 +2037,154 @@ def _vectorized_mu_var_sfs(positions, dafs, n_samples, sub_win_len, win_snps):
     return mu_var_all, mu_sfs_all, midpoints
 
 
-def _sliding_mu_ld(hap_array, win_snps):
-    """Compute μ_LD for each sliding window position using numpy.
+from numba import njit as _njit
 
-    For each window, splits into left/right halves and computes
-    pattern exclusivity. Uses void-dtype views for fast row comparison.
+
+@_njit(cache=True)
+def _mu_ld_scan_numba(hap_flat, n_snps, n_cols, win_snps, step, n_windows):
+    """Numba-accelerated μ_LD for evenly-spaced sliding windows.
+
+    Parameters
+    ----------
+    hap_flat : uint8 array, length n_snps * n_cols
+        Row-major flattened haplotype matrix.
+    n_snps : int
+    n_cols : int
+        Number of samples per SNP.
+    win_snps : int
+        Window size in SNPs.
+    step : int
+        Step size between consecutive window starts.
+    n_windows : int
+        Number of windows to evaluate.
     """
-    from numba import njit
+    result = np.empty(n_windows, dtype=np.float64)
+    half = win_snps // 2
 
-    @njit(cache=True)
-    def _mu_ld_numba(hap_flat, n_snps, n_cols, win_snps):
-        """Numba-accelerated μ_LD scan over all sliding windows.
+    for wi in range(n_windows):
+        w = wi * step  # actual start index
 
-        hap_flat: flattened uint8 haplotype matrix (n_snps * n_cols)
-        n_snps: total number of SNPs
-        n_cols: number of samples
-        win_snps: window size in SNPs
-        """
-        n_windows = n_snps - win_snps + 1
-        result = np.empty(n_windows, dtype=np.float64)
-        half = win_snps // 2
+        left_start = w
+        left_end = w + half
+        right_start = w + half
+        right_end = w + win_snps
 
-        for w in range(n_windows):
-            # Count unique patterns in left and right halves
-            # Use simple O(n²) comparison — win_snps is small (50)
-            left_start = w
-            left_end = w + half
-            right_start = w + half
-            right_end = w + win_snps
+        # Collect unique patterns for left half
+        n_left_unique = 0
+        left_unique_ids = np.empty(half, dtype=np.int64)
+        left_row_ids = np.empty(half, dtype=np.int64)
 
-            # Collect unique patterns for left half
-            n_left_unique = 0
-            left_unique_ids = np.empty(half, dtype=np.int64)
-            left_row_ids = np.empty(half, dtype=np.int64)
-
-            for i in range(left_start, left_end):
-                is_new = True
-                row_i_start = i * n_cols
-                for u in range(n_left_unique):
-                    uid = left_unique_ids[u]
-                    row_u_start = uid * n_cols
-                    match = True
-                    for c in range(n_cols):
-                        if hap_flat[row_i_start + c] != hap_flat[row_u_start + c]:
-                            match = False
-                            break
-                    if match:
-                        is_new = False
-                        left_row_ids[i - left_start] = u
+        for i in range(left_start, left_end):
+            is_new = True
+            row_i = i * n_cols
+            for u in range(n_left_unique):
+                row_u = left_unique_ids[u] * n_cols
+                match = True
+                for c in range(n_cols):
+                    if hap_flat[row_i + c] != hap_flat[row_u + c]:
+                        match = False
                         break
-                if is_new:
-                    left_unique_ids[n_left_unique] = i
-                    left_row_ids[i - left_start] = n_left_unique
-                    n_left_unique += 1
+                if match:
+                    is_new = False
+                    left_row_ids[i - left_start] = u
+                    break
+            if is_new:
+                left_unique_ids[n_left_unique] = i
+                left_row_ids[i - left_start] = n_left_unique
+                n_left_unique += 1
 
-            # Collect unique patterns for right half
-            n_right_unique = 0
-            right_unique_ids = np.empty(win_snps - half, dtype=np.int64)
-            right_row_ids = np.empty(win_snps - half, dtype=np.int64)
+        # Collect unique patterns for right half
+        rhs = win_snps - half
+        n_right_unique = 0
+        right_unique_ids = np.empty(rhs, dtype=np.int64)
+        right_row_ids = np.empty(rhs, dtype=np.int64)
 
-            for i in range(right_start, right_end):
-                is_new = True
-                row_i_start = i * n_cols
-                for u in range(n_right_unique):
-                    uid = right_unique_ids[u]
-                    row_u_start = uid * n_cols
-                    match = True
-                    for c in range(n_cols):
-                        if hap_flat[row_i_start + c] != hap_flat[row_u_start + c]:
-                            match = False
-                            break
-                    if match:
-                        is_new = False
-                        right_row_ids[i - right_start] = u
+        for i in range(right_start, right_end):
+            is_new = True
+            row_i = i * n_cols
+            for u in range(n_right_unique):
+                row_u = right_unique_ids[u] * n_cols
+                match = True
+                for c in range(n_cols):
+                    if hap_flat[row_i + c] != hap_flat[row_u + c]:
+                        match = False
                         break
-                if is_new:
-                    right_unique_ids[n_right_unique] = i
-                    right_row_ids[i - right_start] = n_right_unique
-                    n_right_unique += 1
+                if match:
+                    is_new = False
+                    right_row_ids[i - right_start] = u
+                    break
+            if is_new:
+                right_unique_ids[n_right_unique] = i
+                right_row_ids[i - right_start] = n_right_unique
+                n_right_unique += 1
 
-            if n_left_unique == 0 or n_right_unique == 0:
-                result[w] = 0.0
-                continue
+        if n_left_unique == 0 or n_right_unique == 0:
+            result[wi] = 0.0
+            continue
 
-            # Count exclusive patterns: left patterns not in right, and vice versa
-            n_excl_left_patterns = 0
-            n_excl_left_snps = 0
-            for lu in range(n_left_unique):
-                lid = left_unique_ids[lu]
-                lid_start = lid * n_cols
-                found_in_right = False
-                for ru in range(n_right_unique):
-                    rid = right_unique_ids[ru]
-                    rid_start = rid * n_cols
-                    match = True
-                    for c in range(n_cols):
-                        if hap_flat[lid_start + c] != hap_flat[rid_start + c]:
-                            match = False
-                            break
-                    if match:
-                        found_in_right = True
-                        break
-                if not found_in_right:
-                    n_excl_left_patterns += 1
-                    # Count SNPs with this pattern
-                    for s in range(half):
-                        if left_row_ids[s] == lu:
-                            n_excl_left_snps += 1
-
-            n_excl_right_patterns = 0
-            n_excl_right_snps = 0
+        # Count exclusive left patterns
+        n_excl_lp = 0
+        n_excl_ls = 0
+        for lu in range(n_left_unique):
+            row_l = left_unique_ids[lu] * n_cols
+            found = False
             for ru in range(n_right_unique):
-                rid = right_unique_ids[ru]
-                rid_start = rid * n_cols
-                found_in_left = False
-                for lu in range(n_left_unique):
-                    lid = left_unique_ids[lu]
-                    lid_start = lid * n_cols
-                    match = True
-                    for c in range(n_cols):
-                        if hap_flat[lid_start + c] != hap_flat[rid_start + c]:
-                            match = False
-                            break
-                    if match:
-                        found_in_left = True
+                row_r = right_unique_ids[ru] * n_cols
+                match = True
+                for c in range(n_cols):
+                    if hap_flat[row_l + c] != hap_flat[row_r + c]:
+                        match = False
                         break
-                if not found_in_left:
-                    n_excl_right_patterns += 1
-                    for s in range(win_snps - half):
-                        if right_row_ids[s] == ru:
-                            n_excl_right_snps += 1
+                if match:
+                    found = True
+                    break
+            if not found:
+                n_excl_lp += 1
+                for s in range(half):
+                    if left_row_ids[s] == lu:
+                        n_excl_ls += 1
 
-            result[w] = (n_excl_left_patterns * n_excl_left_snps +
-                         n_excl_right_patterns * n_excl_right_snps) / (n_left_unique * n_right_unique)
+        # Count exclusive right patterns
+        n_excl_rp = 0
+        n_excl_rs = 0
+        for ru in range(n_right_unique):
+            row_r = right_unique_ids[ru] * n_cols
+            found = False
+            for lu in range(n_left_unique):
+                row_l = left_unique_ids[lu] * n_cols
+                match = True
+                for c in range(n_cols):
+                    if hap_flat[row_l + c] != hap_flat[row_r + c]:
+                        match = False
+                        break
+                if match:
+                    found = True
+                    break
+            if not found:
+                n_excl_rp += 1
+                for s in range(rhs):
+                    if right_row_ids[s] == ru:
+                        n_excl_rs += 1
 
-        return result
+        result[wi] = (n_excl_lp * n_excl_ls + n_excl_rp * n_excl_rs) / (n_left_unique * n_right_unique)
 
+    return result
+
+
+def _sliding_mu_ld_stepped(hap_array, win_snps, step, n_windows):
+    """Compute μ_LD for evenly-spaced sliding window positions."""
     hap_array = np.ascontiguousarray(hap_array, dtype=np.uint8)
     n_snps, n_cols = hap_array.shape
-    return _mu_ld_numba(hap_array.ravel(), n_snps, n_cols, win_snps)
+    return _mu_ld_scan_numba(hap_array.ravel(), n_snps, n_cols, win_snps, step, n_windows)
 
 
-def raisd_scan(hap_array, positions, sub_win_len, n_samples, win_snps=50, diploid=False):
+def raisd_scan(hap_array, positions, sub_win_len, n_samples, win_snps=50,
+               max_windows=50, diploid=False):
     """Run a fine-grained RAiSD-style μ scan within a sub-window.
 
     Vectorized μ_VAR and μ_SFS computation, numba-accelerated μ_LD scan.
+    When n_snps >> win_snps, uses a step size to cap the number of
+    sliding windows at max_windows for computational efficiency.
 
     Returns
     -------
@@ -2213,15 +2216,32 @@ def raisd_scan(hap_array, positions, sub_win_len, n_samples, win_snps=50, diploi
             peak_frac = np.clip((mid_pos - positions[0]) / (positions[-1] - positions[0]), 0, 1)
         return np.array([mu_product, mu_product, peak_frac], dtype=np.float64)
 
-    # Vectorized μ_VAR and μ_SFS across all windows
-    mu_var_all, mu_sfs_all, midpoints = _vectorized_mu_var_sfs(
-        positions, dafs, n_samples, sub_win_len, win_snps
-    )
+    # Determine step size to cap computation
+    n_possible = n_snps - win_snps + 1
+    step = max(1, n_possible // max_windows)
 
-    # Numba-accelerated μ_LD across all windows
-    mu_ld_all = _sliding_mu_ld(hap_array, win_snps)
+    # Sample window start positions evenly
+    window_starts = np.arange(0, n_possible, step)
+    n_windows = len(window_starts)
 
-    # Composite μ for each window
+    # Vectorized μ_VAR: span / (sub_win_len * win_snps) for each sampled window
+    spans = positions[window_starts + win_snps - 1] - positions[window_starts]
+    mu_var_all = spans / (sub_win_len * win_snps) if sub_win_len > 0 else np.zeros(n_windows)
+
+    # Vectorized μ_SFS: use cumsum trick for edge counts
+    counts = np.round(dafs * n_samples).astype(np.int64)
+    is_edge = ((counts <= 1) | (counts >= n_samples - 1)).astype(np.float64)
+    cum_edge = np.concatenate(([0.0], np.cumsum(is_edge)))
+    edge_counts = cum_edge[window_starts + win_snps] - cum_edge[window_starts]
+    mu_sfs_all = edge_counts / win_snps
+
+    # Midpoints
+    midpoints = (positions[window_starts] + positions[window_starts + win_snps - 1]) / 2.0
+
+    # Numba μ_LD: subsample using the step
+    mu_ld_all = _sliding_mu_ld_stepped(hap_array, win_snps, step, n_windows)
+
+    # Composite μ
     mu_scan = mu_var_all * mu_sfs_all * mu_ld_all
 
     max_idx = np.argmax(mu_scan)
