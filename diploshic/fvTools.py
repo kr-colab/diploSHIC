@@ -83,6 +83,56 @@ def fast_r2_matrix_diploid(gn):
     return r2
 
 
+def fast_zns_omega_diploid(gn):
+    """Compute ZnS and Omega from diploid genotypes in a single pass.
+
+    Computes the correlation matrix via BLAS, then:
+    - ZnS: mean of off-diagonal r² (computed from Frobenius norm, no r² matrix needed)
+    - Omega: from the r² matrix (computed in-place from r)
+
+    For n_snps <= 1, returns (0, 0).
+    For n_snps < 5, returns (ZnS, 0) since Omega needs at least 5 SNPs.
+
+    Parameters
+    ----------
+    gn : array-like, shape (n_snps, n_individuals)
+        Diploid genotype alt-allele counts (0, 1, or 2).
+
+    Returns
+    -------
+    zns : float
+    omega_val : float
+    """
+    gn = np.asarray(gn, dtype=np.float64)
+    n_snps = gn.shape[0]
+    if n_snps <= 1:
+        return 0.0, 0.0
+
+    gn_norm, mono_mask, n_samples = _normalize_genotypes(gn)
+
+    # Correlation matrix via BLAS
+    r = (gn_norm @ gn_norm.T) / n_samples
+    r[mono_mask, :] = 0
+    r[:, mono_mask] = 0
+
+    # ZnS from Frobenius norm — no need to materialize r²
+    # ZnS = mean of all elements in the r² matrix with zero diagonal
+    # = (sum(r²) - sum(diag(r)²)) / n_snps²
+    frob_sq = np.sum(r * r)
+    diag_sq = np.sum(np.diag(r) ** 2)
+    zns = (frob_sq - diag_sq) / (n_snps * n_snps)
+
+    if n_snps < 5:
+        return float(zns), 0.0
+
+    # Omega needs the r² matrix — compute in-place
+    np.square(r, out=r)
+    np.fill_diagonal(r, 0)
+    omega_val = numba_omega(r)
+
+    return float(zns), float(omega_val)
+
+
 def fast_r2_matrix_haploid(haps):
     """
     Compute R² matrix for haploid data using BLAS matrix multiplication.
@@ -1152,11 +1202,9 @@ def calcAndAppendStatValDiplo(
             statVals["diplo_ZnS"][instanceIndex].append(0.0)
             statVals["diplo_Omega"][instanceIndex].append(0.0)
         else:
-            r2Matrix = fast_r2_matrix_diploid(genosNAlt)
-            statVals["diplo_ZnS"][instanceIndex].append(np.nanmean(r2Matrix))
-            statVals["diplo_Omega"][instanceIndex].append(
-                numba_omega(r2Matrix)
-            )
+            zns_val, omega_val = fast_zns_omega_diploid(genosNAlt)
+            statVals["diplo_ZnS"][instanceIndex].append(zns_val)
+            statVals["diplo_Omega"][instanceIndex].append(omega_val)
     elif statName == "distVar":
         # Support both list and numpy array for unmasked
         unmasked_slice = unmasked[subWinStart - 1 : subWinEnd]
@@ -1262,6 +1310,7 @@ def calcAndAppendStatValForScanDiplo(
             statVals["diplo_ZnS"].append(0.0)
             statVals["diplo_Omega"].append(0.0)
         else:
+            # VCF scan uses condensed r (not r²) for ZnS — preserves legacy behavior
             r2Matrix = fast_r2_for_ld(genosNAlt)
             r2Matrix2 = squareform(r2Matrix ** 2)
             statVals["diplo_ZnS"].append(np.nanmean(r2Matrix))
@@ -2037,7 +2086,7 @@ def _vectorized_mu_var_sfs(positions, dafs, n_samples, sub_win_len, win_snps):
     return mu_var_all, mu_sfs_all, midpoints
 
 
-from numba import njit as _njit
+from numba import njit as _njit  # noqa: E402
 
 
 @_njit(cache=True)
