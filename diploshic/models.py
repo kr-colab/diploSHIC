@@ -329,6 +329,28 @@ class _SliceIndex(tf.keras.layers.Layer):
         return {**super().get_config(), "index": self.index}
 
 
+class _InstanceNorm1D(tf.keras.layers.Layer):
+    """Instance normalization along the spatial (sub-window) axis.
+
+    For each sample and each feature channel independently, normalizes
+    across the sub-window positions to zero mean and unit variance.
+    This strips demography-dependent absolute feature magnitudes while
+    preserving the spatial contrast patterns that indicate selection.
+    """
+    def __init__(self, epsilon=1e-6, **kwargs):
+        super().__init__(**kwargs)
+        self.epsilon = epsilon
+
+    def call(self, x):
+        # x shape: (batch, n_subwins, n_channels)
+        mean = tf.reduce_mean(x, axis=1, keepdims=True)
+        var = tf.math.reduce_variance(x, axis=1, keepdims=True)
+        return (x - mean) / tf.sqrt(var + self.epsilon)
+
+    def get_config(self):
+        return {**super().get_config(), "epsilon": self.epsilon}
+
+
 def _zone_pool(h, center_idx, near_indices, far_indices, name_prefix=""):
     """Extract concentric zone features from a sequence tensor.
 
@@ -387,6 +409,12 @@ def build_multiscale_res1d_model(n_stats=12, n_subwins=11, n_daf_bins=20, n_dist
     dist_in = Input(shape=(n_dist_features, n_subwins, 1), name="dist_input")
 
     x = _fuse_inputs(stats_in, daf_in, dist_in, n_stats, n_daf_bins, n_dist_features, n_subwins)
+
+    # Instance normalization: per-sample, per-channel normalization across sub-windows.
+    # Strips absolute demographic signal (e.g., "Anopheles has high diversity")
+    # while preserving spatial contrast patterns (e.g., "center has lower diversity
+    # than flanks") that are consistent across demographic models.
+    x = _InstanceNorm1D(name="instance_norm")(x)
 
     # Block 1: local (RF=3), with projection 36→64
     h = _res_conv_block(x, 64, 3, dilation_rate=1, name_prefix="res1")
