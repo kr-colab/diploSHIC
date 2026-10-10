@@ -145,7 +145,7 @@ optional arguments:
                         diploid mode which currently does not use ancestral
                         state information
   --pMisPol PMISPOL     The fraction of sites that will be intentionally
-                        polarized to better approximate real data
+                        mispolarized to better approximate real data
 ```
 This mode takes three arguments and then offers many options. The arguments are the "shicMode", i.e. whether
 to calculate the haploid or diploid summary statistics, the name of the input file, and the name of the output file. 
